@@ -475,7 +475,7 @@ func BatchDeleteChannels(ids []int) (int64, error) {
 		}
 		if err := tx.Where("channel_id in (?)", chunk).Delete(&ChannelModelHealth{}).Error; err != nil {
 			tx.Rollback()
-			return err
+			return 0, err
 		}
 	}
 	if err := tx.Commit().Error; err != nil {
