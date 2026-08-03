@@ -33,6 +33,13 @@ export const STATIC_I18N_KEYS = [
   'Auto-disable rules',
   'Channel health checks',
   'Request retry',
+  'Model health',
+  'Model circuit breaker',
+  'All states',
+  'Circuit open',
+  'Probing',
+  'Suspect',
+  'Recovered',
 
   // System settings sidebar
   'System Administration',

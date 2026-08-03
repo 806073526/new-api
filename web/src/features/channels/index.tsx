@@ -19,10 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Settings2 } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Tooltip,
   TooltipContent,
@@ -32,6 +34,7 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getChannelOps } from './api'
+import { ChannelModelHealthTable } from './components/channel-model-health'
 import { ChannelsDialogs } from './components/channels-dialogs'
 import { ChannelsPrimaryButtons } from './components/channels-primary-buttons'
 import { ChannelsProvider } from './components/channels-provider'
@@ -39,6 +42,7 @@ import { ChannelsTable } from './components/channels-table'
 
 export function Channels() {
   const { t } = useTranslation()
+  const [view, setView] = useState<'channels' | 'health'>('channels')
   const isRoot = useAuthStore(
     (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
   )
@@ -94,10 +98,29 @@ export function Channels() {
           </span>
         </SectionPageLayout.Title>
         <SectionPageLayout.Actions>
-          <ChannelsPrimaryButtons />
+          {view === 'channels' && <ChannelsPrimaryButtons />}
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <ChannelsTable />
+          <div className='flex h-full min-h-0 flex-col gap-3'>
+            <Tabs
+              value={view}
+              onValueChange={(value) => setView(value as 'channels' | 'health')}
+            >
+              <TabsList variant='line'>
+                <TabsTrigger value='channels'>
+                  {t('Channel Management')}
+                </TabsTrigger>
+                <TabsTrigger value='health'>{t('Model health')}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className='flex min-h-0 flex-1 flex-col'>
+              {view === 'channels' ? (
+                <ChannelsTable />
+              ) : (
+                <ChannelModelHealthTable />
+              )}
+            </div>
+          </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
 

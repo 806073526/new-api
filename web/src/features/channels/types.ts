@@ -75,6 +75,40 @@ export const channelSchema = z.object({
 
 export type Channel = z.infer<typeof channelSchema>
 
+export type ChannelModelHealthState =
+  | 'closed'
+  | 'suspect'
+  | 'open'
+  | 'half_open'
+
+export type ChannelModelHealth = {
+  id: number
+  channel_id: number
+  group: string
+  model: string
+  state: ChannelModelHealthState
+  failure_count: number
+  cooldown_until: number
+  half_open_lease_until: number
+  last_failure_at: number
+  last_success_at: number
+  last_status_code: number
+  last_error_code: string
+  last_error: string
+  updated_at: number
+  channel_name: string
+  channel_status: number
+}
+
+export type ChannelModelHealthSummary = {
+  channel_id: number
+  total: number
+  suspect: number
+  open: number
+  half_open: number
+  closed: number
+}
+
 // ============================================================================
 // Channel Settings Types
 // ============================================================================

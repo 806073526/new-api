@@ -229,12 +229,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 
 		if newAPIError == nil {
+			observeChannelModelSuccess(c, relayInfo, channel)
 			relayInfo.LastError = nil
 			return
 		}
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
+		observeChannelModelFailure(c, relayInfo, channel, newAPIError)
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
@@ -253,6 +255,55 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
 		})
 	}
+}
+
+func channelModelHealthGroup(c *gin.Context, info *relaycommon.RelayInfo) string {
+	group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	if group == "auto" {
+		if autoGroup := common.GetContextKeyString(c, constant.ContextKeyAutoGroup); autoGroup != "" {
+			return autoGroup
+		}
+	}
+	if group == "" && info != nil {
+		group = info.TokenGroup
+	}
+	return group
+}
+
+func observeChannelModelSuccess(c *gin.Context, info *relaycommon.RelayInfo, channel *model.Channel) {
+	if channel == nil || info == nil || info.IsChannelTest {
+		return
+	}
+	model.ObserveChannelModelSuccess(
+		channel.Id,
+		channelModelHealthGroup(c, info),
+		info.OriginModelName,
+		common.GetTimestamp(),
+	)
+}
+
+func observeChannelModelFailure(c *gin.Context, info *relaycommon.RelayInfo, channel *model.Channel, err *types.NewAPIError) {
+	if channel == nil || info == nil || info.IsChannelTest || !model.ShouldObserveChannelModelFailure(err) {
+		return
+	}
+	key := fmt.Sprintf("%d\x00%s\x00%s", channel.Id, channelModelHealthGroup(c, info), info.OriginModelName)
+	seen, _ := c.Get("channel_model_health_failures")
+	if failedKeys, ok := seen.(map[string]struct{}); ok {
+		if _, exists := failedKeys[key]; exists {
+			return
+		}
+		failedKeys[key] = struct{}{}
+	} else {
+		c.Set("channel_model_health_failures", map[string]struct{}{key: {}})
+	}
+	model.ObserveChannelModelFailure(
+		channel.Id,
+		channelModelHealthGroup(c, info),
+		info.OriginModelName,
+		err,
+		common.GetTimestamp(),
+		model.GetChannelModelHealthConfig(),
+	)
 }
 
 var upgrader = websocket.Upgrader{
@@ -556,10 +607,12 @@ func RelayTask(c *gin.Context) {
 
 		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
 		if taskErr == nil {
+			observeChannelModelSuccess(c, relayInfo, channel)
 			break
 		}
 
 		if !taskErr.LocalError {
+			observeChannelModelFailure(c, relayInfo, channel, types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
 			processChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),

@@ -38,6 +38,8 @@ import type {
   SearchChannelsParams,
   SearchChannelsResponse,
   TagOperationParams,
+  ChannelModelHealth,
+  ChannelModelHealthSummary,
 } from './types'
 
 const channelActionConfig = (
@@ -110,6 +112,53 @@ export async function getChannel(id: number): Promise<GetChannelResponse> {
  */
 export async function getChannelOps(): Promise<ChannelOpsResponse> {
   const res = await api.get('/api/channel/ops', channelActionConfig())
+  return res.data
+}
+
+export type ChannelModelHealthResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    items: ChannelModelHealth[]
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
+export async function getChannelModelHealth(
+  params: {
+    p?: number
+    page_size?: number
+    channel_id?: number
+    state?: string
+    model?: string
+  } = {}
+): Promise<ChannelModelHealthResponse> {
+  const res = await api.get('/api/channel/health', { params })
+  return res.data
+}
+
+export async function getChannelHealthSummary(): Promise<{
+  success: boolean
+  data?: ChannelModelHealthSummary[]
+}> {
+  const res = await api.get('/api/channel/health/summary')
+  return res.data
+}
+
+export async function resetChannelModelHealth(
+  params: {
+    channel_id?: number
+    group?: string
+    model?: string
+  } = {}
+): Promise<{ success: boolean; message?: string }> {
+  const res = await api.post(
+    '/api/channel/health/reset',
+    params,
+    channelActionConfig()
+  )
   return res.data
 }
 

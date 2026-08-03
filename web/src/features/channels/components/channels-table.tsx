@@ -46,7 +46,12 @@ import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
-import { getChannels, searchChannels, getGroups } from '../api'
+import {
+  getChannels,
+  searchChannels,
+  getGroups,
+  getChannelHealthSummary,
+} from '../api'
 import {
   DEFAULT_PAGE_SIZE,
   CHANNEL_STATUS,
@@ -209,6 +214,23 @@ export function ChannelsTable() {
     queryFn: getGroups,
   })
 
+  const { data: healthSummaryData } = useQuery({
+    queryKey: ['channel-model-health-summary'],
+    queryFn: getChannelHealthSummary,
+    refetchInterval: 30_000,
+  })
+
+  const healthSummaryByChannel = useMemo(
+    () =>
+      Object.fromEntries(
+        (healthSummaryData?.data ?? []).map((summary) => [
+          summary.channel_id,
+          summary,
+        ])
+      ),
+    [healthSummaryData]
+  )
+
   const groupOptions = useMemo(
     () =>
       (groupsData?.data || []).map((g) => ({
@@ -305,7 +327,10 @@ export function ChannelsTable() {
   const typeCounts = data?.data?.type_counts
 
   // Columns configuration
-  const columns = useChannelsColumns({ enableSelection: batchMode })
+  const columns = useChannelsColumns({
+    enableSelection: batchMode,
+    healthSummaryByChannel,
+  })
 
   // React Table instance
   const { table } = useDataTable({

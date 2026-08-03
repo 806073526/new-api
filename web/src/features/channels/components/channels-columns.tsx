@@ -38,6 +38,7 @@ import { ProviderBadge } from '@/components/provider-badge'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { TruncatedText } from '@/components/truncated-text'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -76,7 +77,7 @@ import {
   type TagRow,
 } from '../lib'
 import { parseUpstreamUpdateMeta } from '../lib/upstream-update-utils'
-import type { Channel } from '../types'
+import type { Channel, ChannelModelHealthSummary } from '../types'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
 import { useChannels } from './channels-provider'
 import { DataTableRowActions } from './data-table-row-actions'
@@ -104,6 +105,8 @@ function parseIonetMeta(otherInfo: string | null | undefined): null | {
   }
   return null
 }
+
+const EMPTY_HEALTH_SUMMARY: Record<number, ChannelModelHealthSummary> = {}
 
 /**
  * Upstream update tags (+N / -N) shown on channel name for model-fetchable channels
@@ -546,11 +549,14 @@ function BalanceCell({ channel }: { channel: Channel }) {
 export function useChannelsColumns(
   options: {
     enableSelection?: boolean
+    healthSummaryByChannel?: Record<number, ChannelModelHealthSummary>
   } = {}
 ): ColumnDef<Channel>[] {
   const { t, i18n } = useTranslation()
   const { sensitiveVisible } = useChannels()
   const enableSelection = options.enableSelection ?? true
+  const healthSummaryByChannel =
+    options.healthSummaryByChannel ?? EMPTY_HEALTH_SUMMARY
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   // The column definitions only depend on the translation function, the active
   // locale, and sensitive-data visibility. Memoizing keeps the array (and every
@@ -986,6 +992,47 @@ export function useChannelsColumns(
         enableSorting: false,
       },
 
+      {
+        id: 'model_health',
+        header: t('Model health'),
+        meta: { mobileHidden: true },
+        cell: ({ row }) => {
+          if (isTagAggregateRow(row.original)) return null
+          const summary = healthSummaryByChannel[row.original.id]
+          if (!summary) {
+            return <span className='text-muted-foreground'>-</span>
+          }
+          const active = summary.open + summary.half_open + summary.suspect
+          if (active === 0) {
+            return <Badge variant='outline'>{t('Healthy')}</Badge>
+          }
+          return (
+            <div className='flex min-w-0 flex-wrap gap-1'>
+              {summary.open > 0 && (
+                <Badge variant='destructive'>
+                  {t('Circuit open')} {summary.open}
+                </Badge>
+              )}
+              {summary.half_open > 0 && (
+                <Badge variant='secondary'>
+                  {t('Probing')} {summary.half_open}
+                </Badge>
+              )}
+              {summary.suspect > 0 && (
+                <Badge
+                  variant='outline'
+                  className='border-amber-500/50 text-amber-700 dark:text-amber-300'
+                >
+                  {t('Suspect')} {summary.suspect}
+                </Badge>
+              )}
+            </div>
+          )
+        },
+        size: 170,
+        enableSorting: false,
+      },
+
       // Models column
       {
         accessorKey: 'models',
@@ -1184,6 +1231,6 @@ export function useChannelsColumns(
         meta: { pinned: 'right' as const },
       },
     ],
-    [enableSelection, t, locale, sensitiveVisible]
+    [enableSelection, healthSummaryByChannel, t, locale, sensitiveVisible]
   )
 }

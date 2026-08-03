@@ -112,6 +112,10 @@ func Distribute() func(c *gin.Context) {
 							autoGroups := service.GetRequestAutoGroups(c, userGroup)
 							for _, g := range autoGroups {
 								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
+									allowed, _ := tryAcquirePreferredChannelModel(preferred.Id, g, modelRequest.Model, common.GetTimestamp())
+									if !allowed {
+										continue
+									}
 									selectGroup = g
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
 									channel = preferred
@@ -121,10 +125,13 @@ func Distribute() func(c *gin.Context) {
 								}
 							}
 						} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
-							channel = preferred
-							selectGroup = usingGroup
-							affinityUsable = true
-							service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+							allowed, _ := tryAcquirePreferredChannelModel(preferred.Id, usingGroup, modelRequest.Model, common.GetTimestamp())
+							if allowed {
+								channel = preferred
+								selectGroup = usingGroup
+								affinityUsable = true
+								service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+							}
 						}
 					}
 					if !affinityUsable && !service.ShouldKeepChannelAffinityOnChannelDisabled() {
@@ -168,6 +175,13 @@ func Distribute() func(c *gin.Context) {
 			service.RecordChannelAffinity(c, channel.Id)
 		}
 	}
+}
+
+func tryAcquirePreferredChannelModel(channelID int, group, modelName string, now int64) (bool, bool) {
+	if !model.IsChannelModelRoutable(channelID, group, modelName, now) {
+		return false, false
+	}
+	return model.TryAcquireChannelModel(channelID, group, modelName, now, model.GetChannelModelHealthConfig())
 }
 
 // channelSupportsRequestPath reports whether a channel can serve the request path.

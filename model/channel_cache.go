@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -42,39 +41,8 @@ func InitChannelCache() {
 	}
 	var abilities []*Ability
 	DB.Find(&abilities)
-	groups := make(map[string]bool)
-	for _, ability := range abilities {
-		groups[ability.Group] = true
-	}
-	newGroup2model2channels := make(map[string]map[string][]int)
-	for group := range groups {
-		newGroup2model2channels[group] = make(map[string][]int)
-	}
-	for _, channel := range channels {
-		if channel.Status != common.ChannelStatusEnabled {
-			continue // skip disabled channels
-		}
-		groups := strings.Split(channel.Group, ",")
-		for _, group := range groups {
-			models := strings.Split(channel.Models, ",")
-			for _, model := range models {
-				if _, ok := newGroup2model2channels[group][model]; !ok {
-					newGroup2model2channels[group][model] = make([]int, 0)
-				}
-				newGroup2model2channels[group][model] = append(newGroup2model2channels[group][model], channel.Id)
-			}
-		}
-	}
-
-	// sort by priority
-	for group, model2channels := range newGroup2model2channels {
-		for model, channels := range model2channels {
-			sort.Slice(channels, func(i, j int) bool {
-				return newChannelId2channel[channels[i]].GetPriority() > newChannelId2channel[channels[j]].GetPriority()
-			})
-			newGroup2model2channels[group][model] = channels
-		}
-	}
+	newGroup2model2channels := buildChannelModelIndex(channels, abilities)
+	InitChannelModelHealthCache()
 
 	channelSyncLock.Lock()
 	group2model2channels = newGroup2model2channels
@@ -101,6 +69,40 @@ func InitChannelCache() {
 	// invalidating the pricing cache, otherwise the reversed order deadlocks.
 	InvalidatePricingCache()
 	common.SysLog("channels synced from database")
+}
+
+func buildChannelModelIndex(channels []*Channel, abilities []*Ability) map[string]map[string][]int {
+	channelByID := make(map[int]*Channel, len(channels))
+	for _, channel := range channels {
+		channelByID[channel.Id] = channel
+	}
+
+	index := make(map[string]map[string][]int)
+	for _, ability := range abilities {
+		if !ability.Enabled {
+			continue
+		}
+		channel, ok := channelByID[ability.ChannelId]
+		if !ok || channel.Status != common.ChannelStatusEnabled {
+			continue
+		}
+		if _, ok := index[ability.Group]; !ok {
+			index[ability.Group] = make(map[string][]int)
+		}
+		index[ability.Group][ability.Model] = append(index[ability.Group][ability.Model], ability.ChannelId)
+	}
+
+	for group, model2channels := range index {
+		for model, channelIDs := range model2channels {
+			sort.SliceStable(channelIDs, func(i, j int) bool {
+				left := channelByID[channelIDs[i]]
+				right := channelByID[channelIDs[j]]
+				return left.GetPriority() > right.GetPriority()
+			})
+			index[group][model] = channelIDs
+		}
+	}
+	return index
 }
 
 func SyncChannelCache(frequency int) {
@@ -132,9 +134,17 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	if len(channels) == 0 {
 		return nil, nil
 	}
+	channels = filterChannelModelHealthCandidates(channels, group, model, common.GetTimestamp())
+	if len(channels) == 0 {
+		return nil, nil
+	}
 
 	if len(channels) == 1 {
 		if channel, ok := channelsIDM[channels[0]]; ok {
+			allowed, _ := TryAcquireChannelModel(channel.Id, group, model, common.GetTimestamp(), GetChannelModelHealthConfig())
+			if !allowed {
+				return nil, nil
+			}
 			return channel, nil
 		}
 		return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channels[0])
@@ -160,12 +170,10 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	targetPriority := int64(sortedUniquePriorities[retry])
 
 	// get the priority for the given retry number
-	var sumWeight = 0
 	var targetChannels []*Channel
 	for _, channelId := range channels {
 		if channel, ok := channelsIDM[channelId]; ok {
 			if channel.GetPriority() == targetPriority {
-				sumWeight += channel.GetWeight()
 				targetChannels = append(targetChannels, channel)
 			}
 		} else {
@@ -177,35 +185,42 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 		return nil, errors.New(fmt.Sprintf("no channel found, group: %s, model: %s, priority: %d", group, model, targetPriority))
 	}
 
-	// smoothing factor and adjustment
-	smoothingFactor := 1
-	smoothingAdjustment := 0
+	for len(targetChannels) > 0 {
+		sumWeight := 0
+		for _, channel := range targetChannels {
+			sumWeight += channel.GetWeight()
+		}
+		// smoothing factor and adjustment
+		smoothingFactor := 1
+		smoothingAdjustment := 0
+		if sumWeight == 0 {
+			// when all channels have weight 0, set sumWeight to the number of channels and set smoothing adjustment to 100
+			sumWeight = len(targetChannels) * 100
+			smoothingAdjustment = 100
+		} else if sumWeight/len(targetChannels) < 10 {
+			smoothingFactor = 100
+		}
 
-	if sumWeight == 0 {
-		// when all channels have weight 0, set sumWeight to the number of channels and set smoothing adjustment to 100
-		// each channel's effective weight = 100
-		sumWeight = len(targetChannels) * 100
-		smoothingAdjustment = 100
-	} else if sumWeight/len(targetChannels) < 10 {
-		// when the average weight is less than 10, set smoothing factor to 100
-		smoothingFactor = 100
-	}
-
-	// Calculate the total weight of all channels up to endIdx
-	totalWeight := sumWeight * smoothingFactor
-
-	// Generate a random value in the range [0, totalWeight)
-	randomWeight := rand.Intn(totalWeight)
-
-	// Find a channel based on its weight
-	for _, channel := range targetChannels {
-		randomWeight -= channel.GetWeight()*smoothingFactor + smoothingAdjustment
-		if randomWeight < 0 {
+		randomWeight := rand.Intn(sumWeight * smoothingFactor)
+		selectedIndex := -1
+		for index, channel := range targetChannels {
+			randomWeight -= channel.GetWeight()*smoothingFactor + smoothingAdjustment
+			if randomWeight < 0 {
+				selectedIndex = index
+				break
+			}
+		}
+		if selectedIndex < 0 {
+			return nil, errors.New("channel not found")
+		}
+		channel := targetChannels[selectedIndex]
+		allowed, _ := TryAcquireChannelModel(channel.Id, group, model, common.GetTimestamp(), GetChannelModelHealthConfig())
+		if allowed {
 			return channel, nil
 		}
+		targetChannels = append(targetChannels[:selectedIndex], targetChannels[selectedIndex+1:]...)
 	}
-	// return null if no channel is not found
-	return nil, errors.New("channel not found")
+	return nil, nil
 }
 
 // filterChannelsByRequestPathAndModel restricts candidates by request path and

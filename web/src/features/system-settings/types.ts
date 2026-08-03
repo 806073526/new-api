@@ -236,6 +236,14 @@ export type ModelSettings = {
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_mode': 'scheduled_all' | 'passive_recovery'
+  'channel_model_health_setting.enabled': boolean
+  'channel_model_health_setting.failure_threshold': number
+  'channel_model_health_setting.failure_window_seconds': number
+  'channel_model_health_setting.cooldown_seconds': number
+  'channel_model_health_setting.max_cooldown_seconds': number
+  'channel_model_health_setting.half_open_lease_seconds': number
+  'channel_model_health_setting.excluded_channel_ids': number[]
+  'channel_model_health_setting.excluded_models': string[]
   'channel_affinity_setting.enabled': boolean
   'channel_affinity_setting.switch_on_success': boolean
   'channel_affinity_setting.keep_on_channel_disabled': boolean

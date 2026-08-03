@@ -122,6 +122,23 @@ func GetChannel(group string, model string, retry int, requestPath string) (*Cha
 		return nil, err
 	}
 	abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
+	if len(abilities) > 0 {
+		channelIDs := make([]int, 0, len(abilities))
+		for _, ability := range abilities {
+			channelIDs = append(channelIDs, ability.ChannelId)
+		}
+		allowedIDs := make(map[int]struct{}, len(channelIDs))
+		for _, channelID := range filterChannelModelHealthCandidates(channelIDs, group, model, common.GetTimestamp()) {
+			allowedIDs[channelID] = struct{}{}
+		}
+		filtered := abilities[:0]
+		for _, ability := range abilities {
+			if _, ok := allowedIDs[ability.ChannelId]; ok {
+				filtered = append(filtered, ability)
+			}
+		}
+		abilities = filtered
+	}
 	channel := Channel{}
 	if len(abilities) > 0 {
 		// Randomly choose one
@@ -136,6 +153,10 @@ func GetChannel(group string, model string, retry int, requestPath string) (*Cha
 			//log.Printf("weight: %d, ability weight: %d", weight, *ability_.Weight)
 			if weight <= 0 {
 				channel.Id = ability_.ChannelId
+				allowed, _ := TryAcquireChannelModel(channel.Id, group, model, common.GetTimestamp(), GetChannelModelHealthConfig())
+				if !allowed {
+					return GetChannel(group, model, retry, requestPath)
+				}
 				break
 			}
 		}
