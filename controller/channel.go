@@ -165,6 +165,9 @@ func GetAllChannels(c *gin.Context) {
 		}
 	}
 
+	if err := model.EnrichChannelsWithUpstreamMetrics(channelData); err != nil {
+		common.SysError("failed to enrich upstream channel metrics: " + err.Error())
+	}
 	for _, datum := range channelData {
 		clearChannelInfo(datum)
 	}
@@ -378,6 +381,9 @@ func SearchChannels(c *gin.Context) {
 
 	pagedData := channelData[startIdx:endIdx]
 
+	if err := model.EnrichChannelsWithUpstreamMetrics(pagedData); err != nil {
+		common.SysError("failed to enrich upstream channel metrics: " + err.Error())
+	}
 	for _, datum := range pagedData {
 		clearChannelInfo(datum)
 	}
@@ -406,6 +412,9 @@ func GetChannel(c *gin.Context) {
 		return
 	}
 	if channel != nil {
+		if err := model.EnrichChannelsWithUpstreamMetrics([]*model.Channel{channel}); err != nil {
+			common.SysError("failed to enrich upstream channel metric: " + err.Error())
+		}
 		clearChannelInfo(channel)
 	}
 	c.JSON(http.StatusOK, gin.H{

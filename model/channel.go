@@ -57,6 +57,16 @@ type Channel struct {
 
 	// cache info
 	Keys []string `json:"-" gorm:"-"`
+
+	// Upstream fields are transient snapshots supplied by upstream-hub. They are
+	// never persisted on channels and do not affect routing.
+	UpstreamGroup              string   `json:"upstream_group,omitempty" gorm:"-"`
+	UpstreamRatio              float64  `json:"upstream_ratio,omitempty" gorm:"-"`
+	UpstreamBalance            *float64 `json:"upstream_balance,omitempty" gorm:"-"`
+	UpstreamRatioUpdatedTime   int64    `json:"upstream_ratio_updated_time,omitempty" gorm:"-"`
+	UpstreamBalanceUpdatedTime int64    `json:"upstream_balance_updated_time,omitempty" gorm:"-"`
+	UpstreamSyncStatus         string   `json:"upstream_sync_status,omitempty" gorm:"-"`
+	UpstreamSyncError          string   `json:"upstream_sync_error,omitempty" gorm:"-"`
 }
 
 type ChannelInfo struct {
@@ -612,7 +622,10 @@ func (channel *Channel) Delete() error {
 	if err != nil {
 		return err
 	}
-	return DB.Where("channel_id = ?", channel.Id).Delete(&ChannelModelHealth{}).Error
+	if err := DB.Where("channel_id = ?", channel.Id).Delete(&ChannelModelHealth{}).Error; err != nil {
+		return err
+	}
+	return DeleteChannelUpstreamMetric(channel.Id)
 }
 
 var channelStatusLock sync.Mutex

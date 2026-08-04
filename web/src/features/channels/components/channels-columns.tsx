@@ -1294,6 +1294,69 @@ export function useChannelsColumns(
 
       // Priority column
       {
+        id: 'upstream_ratio',
+        header: t('Upstream Ratio'),
+        meta: { mobileHidden: true, showInViewOptions: true },
+        cell: ({ row }) => {
+          if (isTagAggregateRow(row.original)) return null
+          const channel = row.original as Channel
+          if (!channel.upstream_ratio || channel.upstream_ratio <= 0) {
+            return <span className='text-muted-foreground text-xs'>-</span>
+          }
+          const ratioTime = channel.upstream_ratio_updated_time
+            ? formatRelativeTime(channel.upstream_ratio_updated_time, locale)
+            : ''
+          const status = channel.upstream_sync_status || 'matched'
+          return (
+            <div
+              className='flex min-w-0 flex-col text-xs'
+              title={channel.upstream_sync_error || undefined}
+            >
+              <span className='font-mono'>
+                {channel.upstream_ratio.toFixed(4)}
+              </span>
+              <span className='text-muted-foreground truncate'>
+                {channel.upstream_group || status}
+                {ratioTime ? ` · ${ratioTime}` : ''}
+              </span>
+            </div>
+          )
+        },
+        size: 150,
+        enableSorting: false,
+      },
+      {
+        id: 'upstream_balance',
+        header: t('Upstream Balance'),
+        meta: { mobileHidden: true, showInViewOptions: true },
+        cell: ({ row }) => {
+          if (isTagAggregateRow(row.original)) return null
+          const channel = row.original as Channel
+          if (
+            channel.upstream_balance === null ||
+            channel.upstream_balance === undefined
+          ) {
+            return <span className='text-muted-foreground text-xs'>-</span>
+          }
+          const balanceTime = channel.upstream_balance_updated_time
+            ? formatRelativeTime(channel.upstream_balance_updated_time, locale)
+            : ''
+          return (
+            <div className='flex min-w-0 flex-col text-xs'>
+              <span className='font-mono'>
+                ${channel.upstream_balance.toFixed(4)}
+              </span>
+              {balanceTime && (
+                <span className='text-muted-foreground'>{balanceTime}</span>
+              )}
+            </div>
+          )
+        },
+        size: 140,
+        enableSorting: false,
+      },
+
+      {
         accessorKey: 'priority',
         header: t('Priority'),
         meta: { mobileHidden: true },

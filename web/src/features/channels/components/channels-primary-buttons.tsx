@@ -29,9 +29,11 @@ import {
   SortAsc,
   RefreshCw,
   ArrowUpFromLine,
+  ListOrdered,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
@@ -58,6 +60,7 @@ import {
 } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { initializeUpstreamPriorities } from '../api'
 import {
   handleDeleteAllDisabled,
   handleFixAbilities,
@@ -83,6 +86,9 @@ export function ChannelsPrimaryButtons() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showConsistencyDialog, setShowConsistencyDialog] = useState(false)
   const [isRepairingConsistency, setIsRepairingConsistency] = useState(false)
+  const [showPriorityDialog, setShowPriorityDialog] = useState(false)
+  const [isInitializingPriorities, setIsInitializingPriorities] =
+    useState(false)
   const currentUser = useAuthStore((s) => s.auth.user)
   const canEditSensitive = hasPermission(
     currentUser,
@@ -251,6 +257,18 @@ export function ChannelsPrimaryButtons() {
               </DropdownMenuShortcut>
             </DropdownMenuItem>
 
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault()
+                setShowPriorityDialog(true)
+              }}
+            >
+              {t('Initialize Upstream Priorities')}
+              <DropdownMenuShortcut>
+                <ListOrdered className='h-4 w-4' />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+
             <DropdownMenuSeparator />
 
             <DropdownMenuItem
@@ -284,6 +302,44 @@ export function ChannelsPrimaryButtons() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <ConfirmDialog
+        open={showPriorityDialog}
+        onOpenChange={setShowPriorityDialog}
+        title={t('Initialize upstream priorities?')}
+        desc={t(
+          'This assigns priority 500 to the lowest upstream ratio and decreases priority by 10 for each distinct ratio tier. Only channels with synced upstream ratios are changed.'
+        )}
+        confirmText={t('Initialize')}
+        isLoading={isInitializingPriorities}
+        handleConfirm={async () => {
+          setIsInitializingPriorities(true)
+          try {
+            const response = await initializeUpstreamPriorities({
+              base_priority: 500,
+              step: 10,
+            })
+            if (!response.success) {
+              throw new Error(response.message || t('Initialization failed'))
+            }
+            toast.success(
+              t('Upstream priorities initialized: {{updated}} updated', {
+                updated: response.data?.updated ?? 0,
+              })
+            )
+            await queryClient.invalidateQueries()
+            setShowPriorityDialog(false)
+          } catch (error) {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : t('Initialization failed')
+            )
+          } finally {
+            setIsInitializingPriorities(false)
+          }
+        }}
+      />
 
       <ConfirmDialog
         open={showDeleteDialog}

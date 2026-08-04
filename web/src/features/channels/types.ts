@@ -71,6 +71,13 @@ export const channelSchema = z.object({
     multi_key_mode: 'random',
   }),
   settings: z.string().default('{}'), // other_settings JSON
+  upstream_group: z.string().optional(),
+  upstream_ratio: z.number().optional(),
+  upstream_balance: z.number().nullish(),
+  upstream_ratio_updated_time: z.number().optional(),
+  upstream_balance_updated_time: z.number().optional(),
+  upstream_sync_status: z.string().optional(),
+  upstream_sync_error: z.string().optional(),
 })
 
 export type Channel = z.infer<typeof channelSchema>

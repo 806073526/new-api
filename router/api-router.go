@@ -231,6 +231,13 @@ func SetApiRouter(router *gin.Engine) {
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
 		}
+		upstreamHubRoute := apiRouter.Group("/internal/upstream-hub")
+		upstreamHubRoute.Use(middleware.UpstreamHubAuth())
+		{
+			upstreamHubRoute.GET("/identities", controller.GetUpstreamHubIdentities)
+			upstreamHubRoute.POST("/metrics", controller.IngestUpstreamHubMetrics)
+			upstreamHubRoute.POST("/priority/apply", controller.ApplyUpstreamHubPriorities)
+		}
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")

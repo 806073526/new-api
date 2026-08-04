@@ -212,6 +212,25 @@ export async function updateChannelStatus(
   return res.data
 }
 
+export async function initializeUpstreamPriorities(
+  params: {
+    channel_ids?: number[]
+    base_priority?: number
+    step?: number
+  } = {}
+): Promise<{
+  success: boolean
+  message?: string
+  data?: { updated: number; planned: number }
+}> {
+  const res = await api.post(
+    '/api/channel/upstream/priority/initialize',
+    params,
+    channelActionConfig()
+  )
+  return res.data
+}
+
 /**
  * Batch update channel enabled/disabled status.
  */
