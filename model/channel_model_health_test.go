@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/assert"
@@ -215,6 +216,84 @@ func TestListChannelModelHealthJoinsChannelAndFilters(t *testing.T) {
 	require.Len(t, items, 1)
 	assert.Equal(t, "cheap-provider", items[0].ChannelName)
 	assert.Equal(t, "gpt-test", items[0].Model)
+}
+
+func TestGetChannelModelHealthSummarySeparatesWaitingProbeFromActiveCircuit(t *testing.T) {
+	truncateTables(t)
+	now := common.GetTimestamp()
+	items := []ChannelModelHealth{
+		{
+			ChannelId:     11,
+			Group:         "default",
+			Model:         "waiting-probe",
+			State:         ChannelModelHealthOpen,
+			CooldownUntil: now - 1,
+		},
+		{
+			ChannelId:     11,
+			Group:         "default",
+			Model:         "active-circuit",
+			State:         ChannelModelHealthOpen,
+			CooldownUntil: now + 3600,
+		},
+	}
+	require.NoError(t, DB.Create(&items).Error)
+
+	summary, err := GetChannelModelHealthSummary()
+
+	require.NoError(t, err)
+	require.Len(t, summary, 1)
+	assert.Equal(t, int64(1), summary[0].Open)
+	assert.Equal(t, int64(1), summary[0].Ready)
+}
+
+func TestGetChannelModelHealthSummaryIncludesProblematicModels(t *testing.T) {
+	truncateTables(t)
+	now := common.GetTimestamp()
+	items := []ChannelModelHealth{
+		{
+			ChannelId:      11,
+			Group:          "stable",
+			Model:          "gpt-5.6-luna",
+			State:          ChannelModelHealthOpen,
+			CooldownUntil:  now + 3600,
+			FailureCount:   3,
+			LastStatusCode: 502,
+			LastErrorCode:  "upstream_error",
+			LastError:      "upstream unavailable",
+			UpdatedAt:      now,
+		},
+		{
+			ChannelId:      11,
+			Group:          "backup",
+			Model:          "claude-test",
+			State:          ChannelModelHealthSuspect,
+			FailureCount:   1,
+			LastStatusCode: 404,
+			LastErrorCode:  "model_not_found",
+			LastError:      "model is unavailable",
+			UpdatedAt:      now - 1,
+		},
+		{
+			ChannelId: 11,
+			Group:     "stable",
+			Model:     "recovered-model",
+			State:     ChannelModelHealthClosed,
+		},
+	}
+	require.NoError(t, DB.Create(&items).Error)
+
+	summary, err := GetChannelModelHealthSummary()
+
+	require.NoError(t, err)
+	require.Len(t, summary, 1)
+	require.Len(t, summary[0].Issues, 2)
+	assert.Equal(t, "gpt-5.6-luna", summary[0].Issues[0].Model)
+	assert.Equal(t, "stable", summary[0].Issues[0].Group)
+	assert.Equal(t, ChannelModelHealthOpen, summary[0].Issues[0].State)
+	assert.False(t, summary[0].Issues[0].Ready)
+	assert.Equal(t, 502, summary[0].Issues[0].LastStatusCode)
+	assert.Equal(t, "claude-test", summary[0].Issues[1].Model)
 }
 
 func TestResetChannelModelHealthOnlyRemovesMatchingPair(t *testing.T) {

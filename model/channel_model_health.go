@@ -74,12 +74,25 @@ type ChannelModelHealthListParams struct {
 }
 
 type ChannelModelHealthSummaryItem struct {
-	ChannelId int   `json:"channel_id"`
-	Total     int64 `json:"total"`
-	Suspect   int64 `json:"suspect"`
-	Open      int64 `json:"open"`
-	HalfOpen  int64 `json:"half_open"`
-	Closed    int64 `json:"closed"`
+	ChannelId int                              `json:"channel_id"`
+	Total     int64                            `json:"total"`
+	Suspect   int64                            `json:"suspect"`
+	Open      int64                            `json:"open"`
+	Ready     int64                            `json:"ready"`
+	HalfOpen  int64                            `json:"half_open"`
+	Closed    int64                            `json:"closed"`
+	Issues    []ChannelModelHealthSummaryIssue `json:"issues,omitempty"`
+}
+
+type ChannelModelHealthSummaryIssue struct {
+	Group          string                  `json:"group"`
+	Model          string                  `json:"model"`
+	State          ChannelModelHealthState `json:"state"`
+	Ready          bool                    `json:"ready"`
+	FailureCount   int                     `json:"failure_count"`
+	LastStatusCode int                     `json:"last_status_code"`
+	LastErrorCode  string                  `json:"last_error_code"`
+	LastError      string                  `json:"last_error"`
 }
 
 func (ChannelModelHealth) TableName() string {
@@ -456,8 +469,67 @@ func GetChannelModelHealthSummary() ([]ChannelModelHealthSummaryItem, error) {
 			item.Closed += row.Count
 		}
 	}
+	type readyRow struct {
+		ChannelId int
+		Count     int64
+	}
+	var readyRows []readyRow
+	if err := DB.Table("channel_model_health").
+		Select("channel_id, COUNT(*) AS count").
+		Where("state = ? AND cooldown_until <= ?", ChannelModelHealthOpen, common.GetTimestamp()).
+		Group("channel_id").
+		Scan(&readyRows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range readyRows {
+		item := byChannel[row.ChannelId]
+		if item == nil {
+			continue
+		}
+		item.Ready = row.Count
+		item.Open -= row.Count
+	}
+
+	var issueRows []ChannelModelHealth
+	if err := DB.Where("state IN ?", []ChannelModelHealthState{
+		ChannelModelHealthSuspect,
+		ChannelModelHealthOpen,
+		ChannelModelHealthHalfOpen,
+	}).Find(&issueRows).Error; err != nil {
+		return nil, err
+	}
+	now := common.GetTimestamp()
+	for _, issue := range issueRows {
+		item := byChannel[issue.ChannelId]
+		if item == nil {
+			item = &ChannelModelHealthSummaryItem{ChannelId: issue.ChannelId}
+			byChannel[issue.ChannelId] = item
+		}
+		item.Issues = append(item.Issues, ChannelModelHealthSummaryIssue{
+			Group:          issue.Group,
+			Model:          issue.Model,
+			State:          issue.State,
+			Ready:          issue.State == ChannelModelHealthOpen && issue.CooldownUntil <= now,
+			FailureCount:   issue.FailureCount,
+			LastStatusCode: issue.LastStatusCode,
+			LastErrorCode:  issue.LastErrorCode,
+			LastError:      issue.LastError,
+		})
+	}
 	items := make([]ChannelModelHealthSummaryItem, 0, len(byChannel))
 	for _, item := range byChannel {
+		sort.SliceStable(item.Issues, func(i, j int) bool {
+			if item.Issues[i].Ready != item.Issues[j].Ready {
+				return !item.Issues[i].Ready
+			}
+			if item.Issues[i].State != item.Issues[j].State {
+				return item.Issues[i].State < item.Issues[j].State
+			}
+			if item.Issues[i].Model != item.Issues[j].Model {
+				return item.Issues[i].Model < item.Issues[j].Model
+			}
+			return item.Issues[i].Group < item.Issues[j].Group
+		})
 		items = append(items, *item)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].ChannelId < items[j].ChannelId })

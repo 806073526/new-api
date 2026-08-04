@@ -70,6 +70,15 @@ func GetChannelModelHealthSummary(c *gin.Context) {
 	common.ApiSuccess(c, items)
 }
 
+func GetChannelActivitySummary(c *gin.Context) {
+	items, err := model.GetChannelActivitySummary(common.GetTimestamp())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, items)
+}
+
 func ResetChannelModelHealth(c *gin.Context) {
 	var request struct {
 		ChannelId int    `json:"channel_id"`

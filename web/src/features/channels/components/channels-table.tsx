@@ -50,6 +50,7 @@ import {
   getChannels,
   searchChannels,
   getGroups,
+  getChannelActivitySummary,
   getChannelHealthSummary,
 } from '../api'
 import {
@@ -231,6 +232,23 @@ export function ChannelsTable() {
     [healthSummaryData]
   )
 
+  const { data: activitySummaryData } = useQuery({
+    queryKey: ['channel-activity-summary'],
+    queryFn: getChannelActivitySummary,
+    refetchInterval: 5_000,
+  })
+
+  const activitySummaryByChannel = useMemo(
+    () =>
+      Object.fromEntries(
+        (activitySummaryData?.data ?? []).map((summary) => [
+          summary.channel_id,
+          summary,
+        ])
+      ),
+    [activitySummaryData]
+  )
+
   const groupOptions = useMemo(
     () =>
       (groupsData?.data || []).map((g) => ({
@@ -330,6 +348,7 @@ export function ChannelsTable() {
   const columns = useChannelsColumns({
     enableSelection: batchMode,
     healthSummaryByChannel,
+    activitySummaryByChannel,
   })
 
   // React Table instance
@@ -341,6 +360,8 @@ export function ChannelsTable() {
     initialColumnVisibility: {
       models: false,
       tag: false,
+      activity_1h: false,
+      activity_24h: false,
     },
     columnVisibilityStorageKey: CHANNELS_COLUMN_VISIBILITY_STORAGE_KEY,
     columnSizingStorageKey: isMobile

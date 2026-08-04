@@ -105,8 +105,40 @@ export type ChannelModelHealthSummary = {
   total: number
   suspect: number
   open: number
+  ready?: number
   half_open: number
   closed: number
+  issues?: ChannelModelHealthSummaryIssue[]
+}
+
+export type ChannelModelHealthSummaryIssue = {
+  group: string
+  model: string
+  state: ChannelModelHealthState
+  ready: boolean
+  failure_count: number
+  last_status_code: number
+  last_error_code: string
+  last_error: string
+}
+
+export type ChannelActivityDetail = {
+  username: string
+  token_name: string
+  logs: number
+  last_created_at: number
+}
+
+export type ChannelActivityWindow = {
+  window_seconds: number
+  logs: number
+  users: number
+  details: ChannelActivityDetail[]
+}
+
+export type ChannelActivitySummary = {
+  channel_id: number
+  windows: ChannelActivityWindow[]
 }
 
 // ============================================================================

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 /* eslint-disable react-refresh/only-export-components */
 import { useQueryClient } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { CellContext, ColumnDef } from '@tanstack/react-table'
 import {
   AlertTriangle,
   ChevronDown,
@@ -27,7 +27,7 @@ import {
   Shuffle,
   SlidersHorizontal,
 } from 'lucide-react'
-import { useState, useMemo, useContext, useEffect } from 'react'
+import { useState, useMemo, useContext, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -41,6 +41,11 @@ import { TruncatedText } from '@/components/truncated-text'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Tooltip,
   TooltipContent,
@@ -76,8 +81,18 @@ import {
   isTagAggregateRow,
   type TagRow,
 } from '../lib'
+import {
+  formatChannelLogCount,
+  formatChannelActivityIdentity,
+  getTopChannelActivityDetails,
+} from '../lib/channel-activity'
+import { getChannelModelHealthCompactLabels } from '../lib/channel-model-health'
 import { parseUpstreamUpdateMeta } from '../lib/upstream-update-utils'
-import type { Channel, ChannelModelHealthSummary } from '../types'
+import type {
+  Channel,
+  ChannelActivitySummary,
+  ChannelModelHealthSummary,
+} from '../types'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
 import { useChannels } from './channels-provider'
 import { DataTableRowActions } from './data-table-row-actions'
@@ -107,6 +122,7 @@ function parseIonetMeta(otherInfo: string | null | undefined): null | {
 }
 
 const EMPTY_HEALTH_SUMMARY: Record<number, ChannelModelHealthSummary> = {}
+const EMPTY_ACTIVITY_SUMMARY: Record<number, ChannelActivitySummary> = {}
 
 /**
  * Upstream update tags (+N / -N) shown on channel name for model-fetchable channels
@@ -550,6 +566,7 @@ export function useChannelsColumns(
   options: {
     enableSelection?: boolean
     healthSummaryByChannel?: Record<number, ChannelModelHealthSummary>
+    activitySummaryByChannel?: Record<number, ChannelActivitySummary>
   } = {}
 ): ColumnDef<Channel>[] {
   const { t, i18n } = useTranslation()
@@ -557,7 +574,59 @@ export function useChannelsColumns(
   const enableSelection = options.enableSelection ?? true
   const healthSummaryByChannel =
     options.healthSummaryByChannel ?? EMPTY_HEALTH_SUMMARY
+  const activitySummaryByChannel =
+    options.activitySummaryByChannel ?? EMPTY_ACTIVITY_SUMMARY
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const renderActivityCell = useCallback(
+    (windowSeconds: number, windowLabel: string) =>
+      ({ row }: CellContext<Channel, unknown>) => {
+        if (isTagAggregateRow(row.original)) return null
+        const summary = activitySummaryByChannel[row.original.id]
+        const window = summary?.windows.find(
+          (item) => item.window_seconds === windowSeconds
+        )
+        if (!window || window.logs === 0) {
+          return <span className='text-muted-foreground'>-</span>
+        }
+        const count = formatChannelLogCount(window)
+        const details = getTopChannelActivityDetails(window.details ?? [])
+        const activityContent = <Badge variant='outline'>{count}</Badge>
+        return (
+          <Popover>
+            <PopoverTrigger
+              render={
+                <button
+                  type='button'
+                  className='focus-visible:ring-ring inline-flex min-w-0 cursor-pointer rounded-sm focus-visible:ring-2 focus-visible:outline-none'
+                  aria-label={`${windowLabel}: ${count}`}
+                />
+              }
+            >
+              {activityContent}
+            </PopoverTrigger>
+            <PopoverContent className='max-h-80 max-w-96 overflow-y-auto'>
+              <div className='space-y-1.5'>
+                <div className='text-muted-foreground text-xs'>
+                  {windowLabel}: {t('Logs / users')} {count}
+                </div>
+                {details.map((detail) => (
+                  <div
+                    key={`${detail.username}:${detail.token_name}`}
+                    className='text-xs'
+                  >
+                    <div>{formatChannelActivityIdentity(detail)}</div>
+                    <div className='text-muted-foreground'>
+                      {t('Log records')}: {detail.logs}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        )
+      },
+    [activitySummaryByChannel, t]
+  )
   // The column definitions only depend on the translation function, the active
   // locale, and sensitive-data visibility. Memoizing keeps the array (and every
   // cell renderer reference) stable across unrelated re-renders, so react-table
@@ -995,41 +1064,148 @@ export function useChannelsColumns(
       {
         id: 'model_health',
         header: t('Model health'),
-        meta: { mobileHidden: true },
+        meta: { mobileHidden: true, showInViewOptions: true },
         cell: ({ row }) => {
           if (isTagAggregateRow(row.original)) return null
           const summary = healthSummaryByChannel[row.original.id]
           if (!summary) {
             return <span className='text-muted-foreground'>-</span>
           }
-          const active = summary.open + summary.half_open + summary.suspect
+          const ready = summary.ready ?? 0
+          const active =
+            summary.open + ready + summary.half_open + summary.suspect
           if (active === 0) {
             return <Badge variant='outline'>{t('Healthy')}</Badge>
           }
-          return (
-            <div className='flex min-w-0 flex-wrap gap-1'>
-              {summary.open > 0 && (
-                <Badge variant='destructive'>
-                  {t('Circuit open')} {summary.open}
-                </Badge>
-              )}
-              {summary.half_open > 0 && (
-                <Badge variant='secondary'>
-                  {t('Probing')} {summary.half_open}
-                </Badge>
-              )}
-              {summary.suspect > 0 && (
-                <Badge
-                  variant='outline'
-                  className='border-amber-500/50 text-amber-700 dark:text-amber-300'
+          const issues = summary.issues ?? []
+          const issueLabels = getChannelModelHealthCompactLabels(issues)
+          const stateLabel = (issue: (typeof issues)[number]) => {
+            const state = issue.ready ? 'ready' : issue.state
+            if (state === 'open') return t('Circuit open')
+            if (state === 'ready') return t('Waiting for probe')
+            if (state === 'half_open') return t('Probing')
+            return t('Suspect')
+          }
+          const healthContent = (
+            <div className='flex min-w-0 flex-col gap-1'>
+              <div className='flex min-w-0 flex-wrap gap-1'>
+                {summary.open > 0 && (
+                  <Badge variant='destructive'>
+                    {t('Circuit open')} {summary.open}
+                  </Badge>
+                )}
+                {ready > 0 && (
+                  <Badge
+                    variant='outline'
+                    className='border-sky-500/50 text-sky-700 dark:text-sky-300'
+                  >
+                    {t('Waiting for probe')} {ready}
+                  </Badge>
+                )}
+                {summary.half_open > 0 && (
+                  <Badge variant='secondary'>
+                    {t('Probing')} {summary.half_open}
+                  </Badge>
+                )}
+                {summary.suspect > 0 && (
+                  <Badge
+                    variant='outline'
+                    className='border-amber-500/50 text-amber-700 dark:text-amber-300'
+                  >
+                    {t('Suspect')} {summary.suspect}
+                  </Badge>
+                )}
+              </div>
+              {issueLabels.length > 0 && (
+                <span
+                  className='text-muted-foreground block max-w-full truncate text-xs'
+                  title={issueLabels.join(', ')}
                 >
-                  {t('Suspect')} {summary.suspect}
-                </Badge>
+                  {issueLabels.slice(0, 2).join(', ')}
+                  {issueLabels.length > 2 ? ` +${issueLabels.length - 2}` : ''}
+                </span>
               )}
             </div>
           )
+          if (issues.length === 0) {
+            return healthContent
+          }
+          return (
+            <Popover>
+              <PopoverTrigger
+                render={
+                  <button
+                    type='button'
+                    className='focus-visible:ring-ring inline-flex min-w-0 cursor-pointer rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none'
+                    aria-label={t('Model health')}
+                  />
+                }
+              >
+                {healthContent}
+              </PopoverTrigger>
+              <PopoverContent className='max-h-80 max-w-96 overflow-y-auto'>
+                <div className='space-y-1.5'>
+                  {issues.map((issue) => (
+                    <div
+                      key={`${issue.group}:${issue.model}`}
+                      className='text-xs'
+                    >
+                      <div className='font-mono'>{issue.model}</div>
+                      <div className='text-muted-foreground'>
+                        {issue.group} · {stateLabel(issue)}
+                        {issue.last_status_code > 0
+                          ? ` · ${issue.last_status_code}`
+                          : ''}
+                      </div>
+                      {(issue.last_error_code || issue.last_error) && (
+                        <div className='text-muted-foreground max-w-80 truncate'>
+                          {issue.last_error_code || issue.last_error}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )
         },
         size: 170,
+        enableSorting: false,
+      },
+
+      {
+        id: 'activity_60s',
+        header: t('60-second logs'),
+        meta: { mobileHidden: true, showInViewOptions: true },
+        cell: renderActivityCell(60, t('60-second logs')),
+        size: 105,
+        enableSorting: false,
+      },
+
+      {
+        id: 'activity_5m',
+        header: t('5-minute logs'),
+        meta: { mobileHidden: true, showInViewOptions: true },
+        cell: renderActivityCell(5 * 60, t('5-minute logs')),
+        size: 105,
+        enableSorting: false,
+      },
+
+      {
+        id: 'activity_1h',
+        header: t('1-hour logs'),
+        meta: { mobileHidden: true, showInViewOptions: true },
+        cell: renderActivityCell(60 * 60, t('1-hour logs')),
+        size: 105,
+        enableSorting: false,
+      },
+
+      {
+        id: 'activity_24h',
+        header: t('24-hour logs'),
+        meta: { mobileHidden: true, showInViewOptions: true },
+        cell: renderActivityCell(24 * 60 * 60, t('24-hour logs')),
+        size: 105,
         enableSorting: false,
       },
 
@@ -1231,6 +1407,13 @@ export function useChannelsColumns(
         meta: { pinned: 'right' as const },
       },
     ],
-    [enableSelection, healthSummaryByChannel, t, locale, sensitiveVisible]
+    [
+      enableSelection,
+      healthSummaryByChannel,
+      renderActivityCell,
+      t,
+      locale,
+      sensitiveVisible,
+    ]
   )
 }

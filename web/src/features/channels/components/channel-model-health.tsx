@@ -52,7 +52,11 @@ import {
   getChannelModelHealth,
   resetChannelModelHealth,
 } from '../api'
-import type { ChannelModelHealth, ChannelModelHealthState } from '../types'
+import {
+  getChannelModelHealthDisplayState,
+  type ChannelModelHealthDisplayState,
+} from '../lib/channel-model-health'
+import type { ChannelModelHealth } from '../types'
 
 const PAGE_SIZE = 30
 
@@ -64,10 +68,24 @@ const stateOptions = [
   { value: 'closed', label: 'Recovered' },
 ]
 
-function HealthStateBadge({ state }: { state: ChannelModelHealthState }) {
+function HealthStateBadge({
+  state,
+}: {
+  state: ChannelModelHealthDisplayState
+}) {
   const { t } = useTranslation()
   if (state === 'open') {
     return <Badge variant='destructive'>{t('Circuit open')}</Badge>
+  }
+  if (state === 'ready') {
+    return (
+      <Badge
+        variant='outline'
+        className='border-sky-500/50 text-sky-700 dark:text-sky-300'
+      >
+        {t('Waiting for probe')}
+      </Badge>
+    )
   }
   if (state === 'half_open') {
     return <Badge variant='secondary'>{t('Probing')}</Badge>
@@ -121,11 +139,12 @@ export function ChannelModelHealthTable() {
       (summaryQuery.data?.data ?? []).reduce(
         (result, item) => ({
           open: result.open + item.open,
+          ready: result.ready + (item.ready ?? 0),
           halfOpen: result.halfOpen + item.half_open,
           suspect: result.suspect + item.suspect,
           recovered: result.recovered + item.closed,
         }),
-        { open: 0, halfOpen: 0, suspect: 0, recovered: 0 }
+        { open: 0, ready: 0, halfOpen: 0, suspect: 0, recovered: 0 }
       ),
     [summaryQuery.data]
   )
@@ -172,7 +191,12 @@ export function ChannelModelHealthTable() {
             {item.model}
           </TableCell>
           <TableCell>
-            <HealthStateBadge state={item.state} />
+            <HealthStateBadge
+              state={getChannelModelHealthDisplayState(
+                item,
+                Math.floor(Date.now() / 1000)
+              )}
+            />
           </TableCell>
           <TableCell>{item.failure_count}</TableCell>
           <TableCell>{formatHealthTime(item.last_failure_at)}</TableCell>
@@ -233,6 +257,12 @@ export function ChannelModelHealthTable() {
         <div className='flex min-w-0 flex-wrap items-center gap-2'>
           <Badge variant='destructive'>
             {t('Circuit open')} {totals.open}
+          </Badge>
+          <Badge
+            variant='outline'
+            className='border-sky-500/50 text-sky-700 dark:text-sky-300'
+          >
+            {t('Waiting for probe')} {totals.ready}
           </Badge>
           <Badge variant='secondary'>
             {t('Probing')} {totals.halfOpen}

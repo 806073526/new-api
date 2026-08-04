@@ -40,6 +40,7 @@ import type {
   TagOperationParams,
   ChannelModelHealth,
   ChannelModelHealthSummary,
+  ChannelActivitySummary,
 } from './types'
 
 const channelActionConfig = (
@@ -144,6 +145,14 @@ export async function getChannelHealthSummary(): Promise<{
   data?: ChannelModelHealthSummary[]
 }> {
   const res = await api.get('/api/channel/health/summary')
+  return res.data
+}
+
+export async function getChannelActivitySummary(): Promise<{
+  success: boolean
+  data?: ChannelActivitySummary[]
+}> {
+  const res = await api.get('/api/channel/activity/summary')
   return res.data
 }
 
