@@ -111,7 +111,7 @@ export type ChannelModelHealth = {
 export type ChannelModelHealthSummary = {
   channel_id: number
   total: number
-  healthy: number
+  healthy?: number
   suspect: number
   open: number
   ready?: number
