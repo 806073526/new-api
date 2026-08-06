@@ -248,6 +248,42 @@ func TestListChannelModelHealthJoinsChannelAndFilters(t *testing.T) {
 	assert.Equal(t, "gpt-test", items[0].Model)
 }
 
+func TestListChannelModelHealthIncludesEnabledAbilityPairs(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Create(&[]Channel{
+		{Id: 11, Name: "cheap-provider", Status: common.ChannelStatusEnabled},
+		{Id: 12, Name: "disabled-provider", Status: common.ChannelStatusManuallyDisabled},
+	}).Error)
+	require.NoError(t, DB.Create(&[]Ability{
+		{ChannelId: 11, Group: "default", Model: "healthy-model", Enabled: true},
+		{ChannelId: 12, Group: "default", Model: "disabled-model", Enabled: false},
+	}).Error)
+	require.NoError(t, DB.Create(&ChannelModelHealth{
+		ChannelId: 11,
+		Group:     "default",
+		Model:     "broken-model",
+		State:     ChannelModelHealthSuspect,
+	}).Error)
+
+	items, total, err := ListChannelModelHealth(ChannelModelHealthListParams{
+		Page:     1,
+		PageSize: 20,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	require.Len(t, items, 2)
+	var healthy ChannelModelHealthView
+	for _, item := range items {
+		if item.Model == "healthy-model" {
+			healthy = item
+		}
+	}
+	assert.Equal(t, "cheap-provider", healthy.ChannelName)
+	assert.Equal(t, ChannelModelHealthClosed, healthy.State)
+	assert.False(t, healthy.HealthRecordExists)
+}
+
 func TestGetChannelModelHealthSummarySeparatesWaitingProbeFromActiveCircuit(t *testing.T) {
 	truncateTables(t)
 	now := common.GetTimestamp()
@@ -310,11 +346,11 @@ func TestListChannelModelHealthProbeCandidatesReturnsOnlyDueItems(t *testing.T) 
 			HalfOpenLeaseUntil: now + 60,
 		},
 		{
-			ChannelId:     15,
-			Group:         "default",
-			Model:         "suspect",
-			State:         ChannelModelHealthSuspect,
-			FailureCount:  1,
+			ChannelId:    15,
+			Group:        "default",
+			Model:        "suspect",
+			State:        ChannelModelHealthSuspect,
+			FailureCount: 1,
 		},
 	}
 	require.NoError(t, DB.Create(&items).Error)
@@ -330,6 +366,13 @@ func TestListChannelModelHealthProbeCandidatesReturnsOnlyDueItems(t *testing.T) 
 func TestGetChannelModelHealthSummaryIncludesProblematicModels(t *testing.T) {
 	truncateTables(t)
 	now := common.GetTimestamp()
+	require.NoError(t, DB.Create(&Channel{Id: 11, Name: "provider", Status: common.ChannelStatusEnabled}).Error)
+	require.NoError(t, DB.Create(&Ability{
+		ChannelId: 11,
+		Group:     "stable",
+		Model:     "healthy-model",
+		Enabled:   true,
+	}).Error)
 	items := []ChannelModelHealth{
 		{
 			ChannelId:      11,
@@ -367,6 +410,9 @@ func TestGetChannelModelHealthSummaryIncludesProblematicModels(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, summary, 1)
+	assert.Equal(t, int64(4), summary[0].Total)
+	assert.Equal(t, int64(1), summary[0].Healthy)
+	assert.Equal(t, int64(1), summary[0].Closed)
 	require.Len(t, summary[0].Issues, 2)
 	assert.Equal(t, "gpt-5.6-luna", summary[0].Issues[0].Model)
 	assert.Equal(t, "stable", summary[0].Issues[0].Group)

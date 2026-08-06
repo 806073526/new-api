@@ -105,11 +105,13 @@ export type ChannelModelHealth = {
   updated_at: number
   channel_name: string
   channel_status: number
+  health_record_exists?: boolean
 }
 
 export type ChannelModelHealthSummary = {
   channel_id: number
   total: number
+  healthy: number
   suspect: number
   open: number
   ready?: number

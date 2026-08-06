@@ -64,8 +64,9 @@ type ChannelModelHealth struct {
 
 type ChannelModelHealthView struct {
 	ChannelModelHealth
-	ChannelName   string `json:"channel_name" gorm:"column:channel_name"`
-	ChannelStatus int    `json:"channel_status" gorm:"column:channel_status"`
+	ChannelName        string `json:"channel_name" gorm:"column:channel_name"`
+	ChannelStatus      int    `json:"channel_status" gorm:"column:channel_status"`
+	HealthRecordExists bool   `json:"health_record_exists" gorm:"-"`
 }
 
 type ChannelModelHealthListParams struct {
@@ -80,6 +81,7 @@ type ChannelModelHealthListParams struct {
 type ChannelModelHealthSummaryItem struct {
 	ChannelId int                              `json:"channel_id"`
 	Total     int64                            `json:"total"`
+	Healthy   int64                            `json:"healthy"`
 	Suspect   int64                            `json:"suspect"`
 	Open      int64                            `json:"open"`
 	Ready     int64                            `json:"ready"`
@@ -426,6 +428,65 @@ func ListChannelModelHealthProbeCandidates(now int64, limit int) ([]ChannelModel
 	return items, err
 }
 
+type channelModelHealthAbilityView struct {
+	ChannelId     int    `gorm:"column:channel_id"`
+	Group         string `gorm:"column:ability_group"`
+	Model         string `gorm:"column:model"`
+	ChannelName   string `gorm:"column:channel_name"`
+	ChannelStatus int    `gorm:"column:channel_status"`
+}
+
+// listChannelModelHealthViews merges persisted health observations with the
+// currently enabled channel/model abilities. Healthy pairs that have never
+// produced a health record are synthesized for display only and are never
+// written to channel_model_health.
+func listChannelModelHealthViews() ([]ChannelModelHealthView, error) {
+	var items []ChannelModelHealthView
+	healthQuery := DB.Table("channel_model_health").
+		Select("channel_model_health.*, channels.name AS channel_name, channels.status AS channel_status").
+		Joins("LEFT JOIN channels ON channels.id = channel_model_health.channel_id")
+	if err := healthQuery.Scan(&items).Error; err != nil {
+		return nil, err
+	}
+
+	existing := make(map[channelModelHealthKey]struct{}, len(items))
+	for index := range items {
+		items[index].HealthRecordExists = true
+		existing[normalizeChannelModelHealthKey(
+			items[index].ChannelId,
+			items[index].Group,
+			items[index].Model,
+		)] = struct{}{}
+	}
+
+	var abilities []channelModelHealthAbilityView
+	abilityQuery := DB.Table("abilities").
+		Select("abilities.channel_id, abilities."+commonGroupCol+" AS ability_group, abilities.model, channels.name AS channel_name, channels.status AS channel_status").
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities.enabled = ?", true)
+	if err := abilityQuery.Scan(&abilities).Error; err != nil {
+		return nil, err
+	}
+	for _, ability := range abilities {
+		key := normalizeChannelModelHealthKey(ability.ChannelId, ability.Group, ability.Model)
+		if _, ok := existing[key]; ok {
+			continue
+		}
+		existing[key] = struct{}{}
+		items = append(items, ChannelModelHealthView{
+			ChannelModelHealth: ChannelModelHealth{
+				ChannelId: key.ChannelId,
+				Group:     key.Group,
+				Model:     key.Model,
+				State:     ChannelModelHealthClosed,
+			},
+			ChannelName:   ability.ChannelName,
+			ChannelStatus: ability.ChannelStatus,
+		})
+	}
+	return items, nil
+}
+
 func ListChannelModelHealth(params ChannelModelHealthListParams) ([]ChannelModelHealthView, int64, error) {
 	if DB == nil {
 		return []ChannelModelHealthView{}, 0, nil
@@ -439,115 +500,114 @@ func ListChannelModelHealth(params ChannelModelHealthListParams) ([]ChannelModel
 	if params.PageSize > 200 {
 		params.PageSize = 200
 	}
-	query := DB.Table("channel_model_health").
-		Select("channel_model_health.*, channels.name AS channel_name, channels.status AS channel_status").
-		Joins("LEFT JOIN channels ON channels.id = channel_model_health.channel_id")
-	if params.ChannelId > 0 {
-		query = query.Where("channel_model_health.channel_id = ?", params.ChannelId)
-	}
-	if params.Group != "" {
-		query = query.Where("channel_model_health."+commonGroupCol+" = ?", params.Group)
-	}
-	if params.Model != "" {
-		query = query.Where("channel_model_health.model LIKE ?", "%"+params.Model+"%")
-	}
-	if params.State != "" {
-		query = query.Where("channel_model_health.state = ?", params.State)
-	}
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
+	items, err := listChannelModelHealthViews()
+	if err != nil {
 		return nil, 0, err
 	}
-	var items []ChannelModelHealthView
-	err := query.Order("channel_model_health.updated_at DESC").
-		Order("channel_model_health.id DESC").
-		Offset((params.Page - 1) * params.PageSize).
-		Limit(params.PageSize).
-		Scan(&items).Error
-	return items, total, err
+
+	modelFilter := strings.ToLower(params.Model)
+	filtered := items[:0]
+	for _, item := range items {
+		if params.ChannelId > 0 && item.ChannelId != params.ChannelId {
+			continue
+		}
+		if params.Group != "" && item.Group != params.Group {
+			continue
+		}
+		if modelFilter != "" && !strings.Contains(strings.ToLower(item.Model), modelFilter) {
+			continue
+		}
+		state := item.State
+		if state == "" {
+			state = ChannelModelHealthClosed
+		}
+		if params.State != "" && state != params.State {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	items = filtered
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].UpdatedAt != items[j].UpdatedAt {
+			return items[i].UpdatedAt > items[j].UpdatedAt
+		}
+		if items[i].Id != items[j].Id {
+			return items[i].Id > items[j].Id
+		}
+		if items[i].ChannelId != items[j].ChannelId {
+			return items[i].ChannelId < items[j].ChannelId
+		}
+		if items[i].Group != items[j].Group {
+			return items[i].Group < items[j].Group
+		}
+		return items[i].Model < items[j].Model
+	})
+
+	total := int64(len(items))
+	start := (params.Page - 1) * params.PageSize
+	if start >= len(items) {
+		return []ChannelModelHealthView{}, total, nil
+	}
+	end := start + params.PageSize
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[start:end], total, nil
 }
 
 func GetChannelModelHealthSummary() ([]ChannelModelHealthSummaryItem, error) {
 	if DB == nil {
 		return []ChannelModelHealthSummaryItem{}, nil
 	}
-	type row struct {
-		ChannelId int
-		State     ChannelModelHealthState
-		Count     int64
-	}
-	var rows []row
-	if err := DB.Table("channel_model_health").
-		Select("channel_id, state, COUNT(*) AS count").
-		Group("channel_id, state").
-		Scan(&rows).Error; err != nil {
+	views, err := listChannelModelHealthViews()
+	if err != nil {
 		return nil, err
 	}
-	byChannel := make(map[int]*ChannelModelHealthSummaryItem, len(rows))
-	for _, row := range rows {
-		item := byChannel[row.ChannelId]
-		if item == nil {
-			item = &ChannelModelHealthSummaryItem{ChannelId: row.ChannelId}
-			byChannel[row.ChannelId] = item
-		}
-		item.Total += row.Count
-		switch row.State {
-		case ChannelModelHealthSuspect:
-			item.Suspect += row.Count
-		case ChannelModelHealthOpen:
-			item.Open += row.Count
-		case ChannelModelHealthHalfOpen:
-			item.HalfOpen += row.Count
-		case ChannelModelHealthClosed:
-			item.Closed += row.Count
-		}
-	}
-	type readyRow struct {
-		ChannelId int
-		Count     int64
-	}
-	var readyRows []readyRow
-	if err := DB.Table("channel_model_health").
-		Select("channel_id, COUNT(*) AS count").
-		Where("state = ? AND cooldown_until <= ?", ChannelModelHealthOpen, common.GetTimestamp()).
-		Group("channel_id").
-		Scan(&readyRows).Error; err != nil {
-		return nil, err
-	}
-	for _, row := range readyRows {
-		item := byChannel[row.ChannelId]
-		if item == nil {
-			continue
-		}
-		item.Ready = row.Count
-		item.Open -= row.Count
-	}
-
-	var issueRows []ChannelModelHealth
-	if err := DB.Where("state IN ?", []ChannelModelHealthState{
-		ChannelModelHealthSuspect,
-		ChannelModelHealthOpen,
-		ChannelModelHealthHalfOpen,
-	}).Find(&issueRows).Error; err != nil {
-		return nil, err
-	}
+	byChannel := make(map[int]*ChannelModelHealthSummaryItem, len(views))
 	now := common.GetTimestamp()
-	for _, issue := range issueRows {
-		item := byChannel[issue.ChannelId]
+	for _, view := range views {
+		item := byChannel[view.ChannelId]
 		if item == nil {
-			item = &ChannelModelHealthSummaryItem{ChannelId: issue.ChannelId}
-			byChannel[issue.ChannelId] = item
+			item = &ChannelModelHealthSummaryItem{ChannelId: view.ChannelId}
+			byChannel[view.ChannelId] = item
 		}
-		item.Issues = append(item.Issues, ChannelModelHealthSummaryIssue{
-			Group:          issue.Group,
-			Model:          issue.Model,
-			State:          issue.State,
-			Ready:          issue.State == ChannelModelHealthOpen && issue.CooldownUntil <= now,
-			FailureCount:   issue.FailureCount,
-			LastStatusCode: issue.LastStatusCode,
-			LastErrorCode:  issue.LastErrorCode,
-			LastError:      issue.LastError,
-		})
+		item.Total++
+		state := view.State
+		if state == "" {
+			state = ChannelModelHealthClosed
+		}
+		if !view.HealthRecordExists && state == ChannelModelHealthClosed {
+			item.Healthy++
+		}
+		switch state {
+		case ChannelModelHealthSuspect:
+			item.Suspect++
+		case ChannelModelHealthOpen:
+			if view.CooldownUntil <= now {
+				item.Ready++
+			} else {
+				item.Open++
+			}
+		case ChannelModelHealthHalfOpen:
+			item.HalfOpen++
+		case ChannelModelHealthClosed:
+			if view.HealthRecordExists {
+				item.Closed++
+			}
+		}
+
+		if state == ChannelModelHealthSuspect || state == ChannelModelHealthOpen || state == ChannelModelHealthHalfOpen {
+			item.Issues = append(item.Issues, ChannelModelHealthSummaryIssue{
+				Group:          view.Group,
+				Model:          view.Model,
+				State:          state,
+				Ready:          state == ChannelModelHealthOpen && view.CooldownUntil <= now,
+				FailureCount:   view.FailureCount,
+				LastStatusCode: view.LastStatusCode,
+				LastErrorCode:  view.LastErrorCode,
+				LastError:      view.LastError,
+			})
+		}
 	}
 	items := make([]ChannelModelHealthSummaryItem, 0, len(byChannel))
 	for _, item := range byChannel {

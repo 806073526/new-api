@@ -1072,9 +1072,11 @@ export function useChannelsColumns(
             return <span className='text-muted-foreground'>-</span>
           }
           const ready = summary.ready ?? 0
+          const healthy = summary.healthy ?? 0
+          const recovered = summary.closed ?? 0
           const active =
             summary.open + ready + summary.half_open + summary.suspect
-          if (active === 0) {
+          if (active === 0 && healthy === 0 && recovered === 0) {
             return <Badge variant='outline'>{t('Healthy')}</Badge>
           }
           const issues = summary.issues ?? []
@@ -1089,6 +1091,19 @@ export function useChannelsColumns(
           const healthContent = (
             <div className='flex min-w-0 flex-col gap-1'>
               <div className='flex min-w-0 flex-wrap gap-1'>
+                {healthy > 0 && (
+                  <Badge variant='outline'>
+                    {t('Healthy')} {healthy}
+                  </Badge>
+                )}
+                {recovered > 0 && (
+                  <Badge
+                    variant='outline'
+                    className='border-emerald-500/50 text-emerald-700 dark:text-emerald-300'
+                  >
+                    {t('Recovered')} {recovered}
+                  </Badge>
+                )}
                 {summary.open > 0 && (
                   <Badge variant='destructive'>
                     {t('Circuit open')} {summary.open}

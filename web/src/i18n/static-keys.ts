@@ -40,6 +40,7 @@ export const STATIC_I18N_KEYS = [
   'Waiting for probe',
   'Probing',
   'Suspect',
+  'Healthy',
   'Recovered',
   'Recent logs',
   '60-second logs',

@@ -53,6 +53,7 @@ import {
   resetChannelModelHealth,
 } from '../api'
 import {
+  getChannelModelHealthClosedDisplayState,
   getChannelModelHealthDisplayState,
   type ChannelModelHealthDisplayState,
 } from '../lib/channel-model-health'
@@ -65,13 +66,15 @@ const stateOptions = [
   { value: 'open', label: 'Circuit open' },
   { value: 'half_open', label: 'Probing' },
   { value: 'suspect', label: 'Suspect' },
-  { value: 'closed', label: 'Recovered' },
+  { value: 'closed', label: 'Healthy' },
 ]
 
 function HealthStateBadge({
   state,
+  healthRecordExists,
 }: {
   state: ChannelModelHealthDisplayState
+  healthRecordExists?: boolean
 }) {
   const { t } = useTranslation()
   if (state === 'open') {
@@ -100,7 +103,14 @@ function HealthStateBadge({
       </Badge>
     )
   }
-  return <Badge variant='outline'>{t('Recovered')}</Badge>
+  const closedState = getChannelModelHealthClosedDisplayState({
+    health_record_exists: healthRecordExists,
+  })
+  return (
+    <Badge variant='outline'>
+      {t(closedState === 'healthy' ? 'Healthy' : 'Recovered')}
+    </Badge>
+  )
 }
 
 function formatHealthTime(value: number) {
@@ -142,9 +152,17 @@ export function ChannelModelHealthTable() {
           ready: result.ready + (item.ready ?? 0),
           halfOpen: result.halfOpen + item.half_open,
           suspect: result.suspect + item.suspect,
+          healthy: result.healthy + (item.healthy ?? 0),
           recovered: result.recovered + item.closed,
         }),
-        { open: 0, ready: 0, halfOpen: 0, suspect: 0, recovered: 0 }
+        {
+          open: 0,
+          ready: 0,
+          halfOpen: 0,
+          suspect: 0,
+          healthy: 0,
+          recovered: 0,
+        }
       ),
     [summaryQuery.data]
   )
@@ -196,6 +214,7 @@ export function ChannelModelHealthTable() {
                 item,
                 Math.floor(Date.now() / 1000)
               )}
+              healthRecordExists={item.health_record_exists}
             />
           </TableCell>
           <TableCell>{item.failure_count}</TableCell>
@@ -272,6 +291,9 @@ export function ChannelModelHealthTable() {
             className='border-amber-500/50 text-amber-700 dark:text-amber-300'
           >
             {t('Suspect')} {totals.suspect}
+          </Badge>
+          <Badge variant='outline'>
+            {t('Healthy')} {totals.healthy}
           </Badge>
           <Badge variant='outline'>
             {t('Recovered')} {totals.recovered}

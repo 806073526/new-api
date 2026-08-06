@@ -85,4 +85,19 @@ describe('channel model health display state', () => {
       ['gpt-5.6-luna', 'claude-test']
     )
   })
+
+  test('distinguishes never-observed healthy models from recovered models', () => {
+    assert.equal(
+      channelModelHealth.getChannelModelHealthClosedDisplayState({
+        health_record_exists: false,
+      }),
+      'healthy'
+    )
+    assert.equal(
+      channelModelHealth.getChannelModelHealthClosedDisplayState({
+        health_record_exists: true,
+      }),
+      'recovered'
+    )
+  })
 })
