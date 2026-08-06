@@ -100,4 +100,72 @@ describe('channel model health display state', () => {
       'recovered'
     )
   })
+
+  test('returns only never-observed models for healthy detail', () => {
+    const getClosedItems = Reflect.get(
+      channelModelHealth,
+      'getChannelModelHealthClosedItems'
+    )
+    assert.equal(typeof getClosedItems, 'function')
+    assert.deepEqual(
+      getClosedItems(
+        [
+          {
+            ...baseHealth,
+            model: 'healthy-model',
+            state: 'closed',
+            health_record_exists: false,
+          },
+          {
+            ...baseHealth,
+            model: 'recovered-model',
+            state: 'closed',
+            health_record_exists: true,
+          },
+          {
+            ...baseHealth,
+            model: 'open-model',
+            state: 'open',
+            health_record_exists: false,
+          },
+        ],
+        'healthy'
+      ).map((item: ChannelModelHealth) => item.model),
+      ['healthy-model']
+    )
+  })
+
+  test('returns only persisted records for recovered detail', () => {
+    const getClosedItems = Reflect.get(
+      channelModelHealth,
+      'getChannelModelHealthClosedItems'
+    )
+    assert.equal(typeof getClosedItems, 'function')
+    assert.deepEqual(
+      getClosedItems(
+        [
+          {
+            ...baseHealth,
+            model: 'healthy-model',
+            state: 'closed',
+            health_record_exists: false,
+          },
+          {
+            ...baseHealth,
+            model: 'recovered-model',
+            state: 'closed',
+            health_record_exists: true,
+          },
+          {
+            ...baseHealth,
+            model: 'open-model',
+            state: 'open',
+            health_record_exists: true,
+          },
+        ],
+        'recovered'
+      ).map((item: ChannelModelHealth) => item.model),
+      ['recovered-model']
+    )
+  })
 })

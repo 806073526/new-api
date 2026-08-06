@@ -93,6 +93,7 @@ import type {
   ChannelActivitySummary,
   ChannelModelHealthSummary,
 } from '../types'
+import { ChannelModelHealthClosedDetailsPopover } from './channel-model-health-closed-details-popover'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
 import { useChannels } from './channels-provider'
 import { DataTableRowActions } from './data-table-row-actions'
@@ -1088,100 +1089,108 @@ export function useChannelsColumns(
             if (state === 'half_open') return t('Probing')
             return t('Suspect')
           }
-          const healthContent = (
-            <div className='flex min-w-0 flex-col gap-1'>
-              <div className='flex min-w-0 flex-wrap gap-1'>
-                {healthy > 0 && (
-                  <Badge variant='outline'>
-                    {t('Healthy')} {healthy}
-                  </Badge>
-                )}
-                {recovered > 0 && (
-                  <Badge
-                    variant='outline'
-                    className='border-emerald-500/50 text-emerald-700 dark:text-emerald-300'
-                  >
-                    {t('Recovered')} {recovered}
-                  </Badge>
-                )}
-                {summary.open > 0 && (
-                  <Badge variant='destructive'>
-                    {t('Circuit open')} {summary.open}
-                  </Badge>
-                )}
-                {ready > 0 && (
-                  <Badge
-                    variant='outline'
-                    className='border-sky-500/50 text-sky-700 dark:text-sky-300'
-                  >
-                    {t('Waiting for probe')} {ready}
-                  </Badge>
-                )}
-                {summary.half_open > 0 && (
-                  <Badge variant='secondary'>
-                    {t('Probing')} {summary.half_open}
-                  </Badge>
-                )}
-                {summary.suspect > 0 && (
-                  <Badge
-                    variant='outline'
-                    className='border-amber-500/50 text-amber-700 dark:text-amber-300'
-                  >
-                    {t('Suspect')} {summary.suspect}
-                  </Badge>
-                )}
-              </div>
-              {issueLabels.length > 0 && (
-                <span
-                  className='text-muted-foreground block max-w-full truncate text-xs'
-                  title={issueLabels.join(', ')}
-                >
-                  {issueLabels.slice(0, 2).join(', ')}
-                  {issueLabels.length > 2 ? ` +${issueLabels.length - 2}` : ''}
-                </span>
+          const issueBadges = (
+            <>
+              {summary.open > 0 && (
+                <Badge variant='destructive'>
+                  {t('Circuit open')} {summary.open}
+                </Badge>
               )}
-            </div>
+              {ready > 0 && (
+                <Badge
+                  variant='outline'
+                  className='border-sky-500/50 text-sky-700 dark:text-sky-300'
+                >
+                  {t('Waiting for probe')} {ready}
+                </Badge>
+              )}
+              {summary.half_open > 0 && (
+                <Badge variant='secondary'>
+                  {t('Probing')} {summary.half_open}
+                </Badge>
+              )}
+              {summary.suspect > 0 && (
+                <Badge
+                  variant='outline'
+                  className='border-amber-500/50 text-amber-700 dark:text-amber-300'
+                >
+                  {t('Suspect')} {summary.suspect}
+                </Badge>
+              )}
+            </>
           )
-          if (issues.length === 0) {
-            return healthContent
-          }
-          return (
-            <Popover>
-              <PopoverTrigger
-                render={
-                  <button
-                    type='button'
-                    className='focus-visible:ring-ring inline-flex min-w-0 cursor-pointer rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none'
-                    aria-label={t('Model health')}
-                  />
-                }
-              >
-                {healthContent}
-              </PopoverTrigger>
-              <PopoverContent className='max-h-80 max-w-96 overflow-y-auto'>
-                <div className='space-y-1.5'>
-                  {issues.map((issue) => (
-                    <div
-                      key={`${issue.group}:${issue.model}`}
-                      className='text-xs'
+          const issueContent =
+            issues.length === 0 ? (
+              <div className='flex min-w-0 flex-wrap gap-1'>{issueBadges}</div>
+            ) : (
+              <Popover>
+                <PopoverTrigger
+                  render={
+                    <button
+                      type='button'
+                      className='focus-visible:ring-ring inline-flex min-w-0 cursor-pointer rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none'
+                      aria-label={t('Model health')}
+                    />
+                  }
+                >
+                  <span className='inline-flex min-w-0 flex-col gap-1'>
+                    <span className='inline-flex min-w-0 flex-wrap gap-1'>
+                      {issueBadges}
+                    </span>
+                    <span
+                      className='text-muted-foreground block max-w-full truncate text-xs'
+                      title={issueLabels.join(', ')}
                     >
-                      <div className='font-mono'>{issue.model}</div>
-                      <div className='text-muted-foreground'>
-                        {issue.group} · {stateLabel(issue)}
-                        {issue.last_status_code > 0
-                          ? ` · ${issue.last_status_code}`
-                          : ''}
-                      </div>
-                      {(issue.last_error_code || issue.last_error) && (
-                        <div className='text-muted-foreground max-w-80 truncate'>
-                          {issue.last_error_code || issue.last_error}
+                      {issueLabels.slice(0, 2).join(', ')}
+                      {issueLabels.length > 2
+                        ? ` +${issueLabels.length - 2}`
+                        : ''}
+                    </span>
+                  </span>
+                </PopoverTrigger>
+                <PopoverContent className='max-h-80 max-w-96 overflow-y-auto'>
+                  <div className='space-y-1.5'>
+                    {issues.map((issue) => (
+                      <div
+                        key={`${issue.group}:${issue.model}`}
+                        className='text-xs'
+                      >
+                        <div className='font-mono'>{issue.model}</div>
+                        <div className='text-muted-foreground'>
+                          {issue.group} · {stateLabel(issue)}
+                          {issue.last_status_code > 0
+                            ? ` · ${issue.last_status_code}`
+                            : ''}
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
+                        {(issue.last_error_code || issue.last_error) && (
+                          <div className='text-muted-foreground max-w-80 truncate'>
+                            {issue.last_error_code || issue.last_error}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )
+          return (
+            <div className='flex min-w-0 flex-wrap items-start gap-1'>
+              {healthy > 0 && (
+                <ChannelModelHealthClosedDetailsPopover
+                  channelId={row.original.id}
+                  count={healthy}
+                  state='healthy'
+                />
+              )}
+              {recovered > 0 && (
+                <ChannelModelHealthClosedDetailsPopover
+                  channelId={row.original.id}
+                  count={recovered}
+                  state='recovered'
+                />
+              )}
+              {active > 0 && issueContent}
+            </div>
           )
         },
         size: 170,

@@ -38,6 +38,17 @@ export function getChannelModelHealthClosedDisplayState(
   return item.health_record_exists === false ? 'healthy' : 'recovered'
 }
 
+export function getChannelModelHealthClosedItems(
+  items: ChannelModelHealth[],
+  closedState: ChannelModelHealthClosedDisplayState
+): ChannelModelHealth[] {
+  return items.filter(
+    (item) =>
+      item.state === 'closed' &&
+      getChannelModelHealthClosedDisplayState(item) === closedState
+  )
+}
+
 export function getChannelModelHealthIssueLabels(
   issues: Array<{ model: string; group: string }>
 ): string[] {
