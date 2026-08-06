@@ -21,20 +21,24 @@ const (
 )
 
 type ChannelModelHealthConfig struct {
-	FailureThreshold     int
-	FailureWindowSeconds int64
-	CooldownSeconds      int64
-	MaxCooldownSeconds   int64
-	HalfOpenLeaseSeconds int64
+	FailureThreshold            int
+	FailureWindowSeconds        int64
+	FirstResponseTimeoutSeconds int64
+	CooldownSeconds             int64
+	MaxCooldownSeconds          int64
+	HalfOpenLeaseSeconds        int64
+	ActiveProbeIntervalSeconds  int64
 }
 
 func DefaultChannelModelHealthConfig() ChannelModelHealthConfig {
 	return ChannelModelHealthConfig{
-		FailureThreshold:     3,
-		FailureWindowSeconds: 60,
-		CooldownSeconds:      60,
-		MaxCooldownSeconds:   1800,
-		HalfOpenLeaseSeconds: 30,
+		FailureThreshold:            3,
+		FailureWindowSeconds:        60,
+		FirstResponseTimeoutSeconds: 0,
+		CooldownSeconds:             60,
+		MaxCooldownSeconds:          1800,
+		HalfOpenLeaseSeconds:        30,
+		ActiveProbeIntervalSeconds:  0,
 	}
 }
 
@@ -190,16 +194,14 @@ func (health *ChannelModelHealth) open(now int64, config ChannelModelHealthConfi
 	health.HalfOpenLeaseUntil = 0
 	base := positiveDuration(config.CooldownSeconds, 60)
 	maxCooldown := positiveDuration(config.MaxCooldownSeconds, 1800)
-	cooldown := base
-	if cooldown > maxCooldown {
-		cooldown = maxCooldown
-	} else {
-		for reopen := 1; reopen < health.OpenCount && cooldown < maxCooldown; reopen++ {
-			if cooldown > maxCooldown/2 {
-				cooldown = maxCooldown
-				break
-			}
-			cooldown *= 2
+	cooldown := maxCooldown
+	if base <= maxCooldown {
+		openCount := int64(health.OpenCount)
+		if openCount <= 0 {
+			openCount = 1
+		}
+		if openCount <= maxCooldown/base {
+			cooldown = base * openCount
 		}
 	}
 	health.CooldownUntil = now + cooldown
@@ -280,11 +282,13 @@ func IsChannelModelHealthEnabled() bool {
 func GetChannelModelHealthConfig() ChannelModelHealthConfig {
 	setting := operation_setting.GetChannelModelHealthSetting()
 	config := ChannelModelHealthConfig{
-		FailureThreshold:     setting.FailureThreshold,
-		FailureWindowSeconds: setting.FailureWindowSeconds,
-		CooldownSeconds:      setting.CooldownSeconds,
-		MaxCooldownSeconds:   setting.MaxCooldownSeconds,
-		HalfOpenLeaseSeconds: setting.HalfOpenLeaseSeconds,
+		FailureThreshold:            setting.FailureThreshold,
+		FailureWindowSeconds:        setting.FailureWindowSeconds,
+		FirstResponseTimeoutSeconds: setting.FirstResponseTimeoutSeconds,
+		CooldownSeconds:             setting.CooldownSeconds,
+		MaxCooldownSeconds:          setting.MaxCooldownSeconds,
+		HalfOpenLeaseSeconds:        setting.HalfOpenLeaseSeconds,
+		ActiveProbeIntervalSeconds:  setting.ActiveProbeIntervalSeconds,
 	}
 	defaults := DefaultChannelModelHealthConfig()
 	if config.FailureThreshold <= 0 {
@@ -303,6 +307,13 @@ func GetChannelModelHealthConfig() ChannelModelHealthConfig {
 		config.HalfOpenLeaseSeconds = defaults.HalfOpenLeaseSeconds
 	}
 	return config
+}
+
+func GetChannelModelFirstResponseTimeoutSeconds(channelId int, model string) int64 {
+	if !IsChannelModelHealthEnabled() || IsChannelModelHealthExcluded(channelId, model) {
+		return 0
+	}
+	return GetChannelModelHealthConfig().FirstResponseTimeoutSeconds
 }
 
 func IsChannelModelHealthExcluded(channelId int, model string) bool {
@@ -391,6 +402,28 @@ func ObserveChannelModelSuccess(channelId int, group, model string, now int64) {
 	snapshot := *health
 	channelModelHealthCache.Unlock()
 	PersistChannelModelHealth(&snapshot)
+}
+
+// ListChannelModelHealthProbeCandidates returns health records that are ready
+// for a recovery probe. Suspect records are intentionally excluded: they are
+// still routable and should continue to recover through normal traffic.
+func ListChannelModelHealthProbeCandidates(now int64, limit int) ([]ChannelModelHealth, error) {
+	if DB == nil {
+		return []ChannelModelHealth{}, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+
+	var items []ChannelModelHealth
+	err := DB.Where(
+		"(state = ? AND cooldown_until <= ?) OR (state = ? AND half_open_lease_until <= ?)",
+		ChannelModelHealthOpen,
+		now,
+		ChannelModelHealthHalfOpen,
+		now,
+	).Order("id asc").Limit(limit).Find(&items).Error
+	return items, err
 }
 
 func ListChannelModelHealth(params ChannelModelHealthListParams) ([]ChannelModelHealthView, int64, error) {
@@ -612,6 +645,8 @@ func ShouldObserveChannelModelFailure(err *types.NewAPIError) bool {
 		return false
 	}
 	switch err.GetErrorCode() {
+	case types.ErrorCodeFirstResponseTimeout:
+		return true
 	case types.ErrorCodeInvalidRequest,
 		types.ErrorCodeBadRequestBody,
 		types.ErrorCodeReadRequestBodyFailed,

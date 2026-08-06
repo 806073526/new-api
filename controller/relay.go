@@ -200,6 +200,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		addUsedChannel(c, channel.Id)
+		relayInfo.FirstResponseTimeoutSeconds = model.GetChannelModelFirstResponseTimeoutSeconds(
+			channel.Id,
+			relayInfo.OriginModelName,
+		)
 		if billingErr := service.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
 			newAPIError = billingErr
 			break
@@ -227,6 +231,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		default:
 			newAPIError = relayHandler(c, relayInfo)
 		}
+		if relayInfo.HasFirstResponseTimedOut() {
+			newAPIError = relaycommon.NewFirstResponseTimeoutError()
+		}
+		relayInfo.FinishFirstResponseTimeout()
 
 		if newAPIError == nil {
 			observeChannelModelSuccess(c, relayInfo, channel)
@@ -283,7 +291,9 @@ func observeChannelModelSuccess(c *gin.Context, info *relaycommon.RelayInfo, cha
 }
 
 func observeChannelModelFailure(c *gin.Context, info *relaycommon.RelayInfo, channel *model.Channel, err *types.NewAPIError) {
-	if channel == nil || info == nil || info.IsChannelTest || !model.ShouldObserveChannelModelFailure(err) {
+	if channel == nil || info == nil || info.IsChannelTest ||
+		(c != nil && c.Request != nil && c.Request.Context().Err() != nil) ||
+		!model.ShouldObserveChannelModelFailure(err) {
 		return
 	}
 	key := fmt.Sprintf("%d\x00%s\x00%s", channel.Id, channelModelHealthGroup(c, info), info.OriginModelName)
@@ -383,6 +393,9 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if openaiErr == nil {
 		return false
 	}
+	if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
+		return false
+	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
@@ -397,6 +410,9 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	}
 	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
+	}
+	if openaiErr.GetErrorCode() == types.ErrorCodeFirstResponseTimeout {
+		return true
 	}
 	code := openaiErr.StatusCode
 	if code >= 200 && code < 300 {

@@ -7,25 +7,29 @@ import (
 )
 
 type ChannelModelHealthSetting struct {
-	Enabled              bool     `json:"enabled"`
-	FailureThreshold     int      `json:"failure_threshold"`
-	FailureWindowSeconds int64    `json:"failure_window_seconds"`
-	CooldownSeconds      int64    `json:"cooldown_seconds"`
-	MaxCooldownSeconds   int64    `json:"max_cooldown_seconds"`
-	HalfOpenLeaseSeconds int64    `json:"half_open_lease_seconds"`
-	ExcludedChannelIds   []int    `json:"excluded_channel_ids"`
-	ExcludedModels       []string `json:"excluded_models"`
+	Enabled                     bool     `json:"enabled"`
+	FailureThreshold            int      `json:"failure_threshold"`
+	FailureWindowSeconds        int64    `json:"failure_window_seconds"`
+	FirstResponseTimeoutSeconds int64    `json:"first_response_timeout_seconds"`
+	CooldownSeconds             int64    `json:"cooldown_seconds"`
+	MaxCooldownSeconds          int64    `json:"max_cooldown_seconds"`
+	HalfOpenLeaseSeconds        int64    `json:"half_open_lease_seconds"`
+	ActiveProbeIntervalSeconds  int64    `json:"active_probe_interval_seconds"`
+	ExcludedChannelIds          []int    `json:"excluded_channel_ids"`
+	ExcludedModels              []string `json:"excluded_models"`
 }
 
 var channelModelHealthSetting = ChannelModelHealthSetting{
-	Enabled:              false,
-	FailureThreshold:     3,
-	FailureWindowSeconds: 60,
-	CooldownSeconds:      60,
-	MaxCooldownSeconds:   1800,
-	HalfOpenLeaseSeconds: 30,
-	ExcludedChannelIds:   []int{},
-	ExcludedModels:       []string{},
+	Enabled:                     false,
+	FailureThreshold:            3,
+	FailureWindowSeconds:        60,
+	FirstResponseTimeoutSeconds: 0,
+	CooldownSeconds:             60,
+	MaxCooldownSeconds:          1800,
+	HalfOpenLeaseSeconds:        30,
+	ActiveProbeIntervalSeconds:  0,
+	ExcludedChannelIds:          []int{},
+	ExcludedModels:              []string{},
 }
 
 func init() {

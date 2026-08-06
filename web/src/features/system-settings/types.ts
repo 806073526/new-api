@@ -239,9 +239,11 @@ export type ModelSettings = {
   'channel_model_health_setting.enabled': boolean
   'channel_model_health_setting.failure_threshold': number
   'channel_model_health_setting.failure_window_seconds': number
+  'channel_model_health_setting.first_response_timeout_seconds': number
   'channel_model_health_setting.cooldown_seconds': number
   'channel_model_health_setting.max_cooldown_seconds': number
   'channel_model_health_setting.half_open_lease_seconds': number
+  'channel_model_health_setting.active_probe_interval_seconds': number
   'channel_model_health_setting.excluded_channel_ids': number[]
   'channel_model_health_setting.excluded_models': string[]
   'channel_affinity_setting.enabled': boolean

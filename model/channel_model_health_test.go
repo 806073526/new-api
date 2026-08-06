@@ -147,6 +147,36 @@ func TestChannelModelHealthCooldownSaturatesWithoutOverflow(t *testing.T) {
 	assert.Equal(t, int64(1900), health.CooldownUntil)
 }
 
+func TestChannelModelHealthCooldownIncrementsLinearlyUntilMaximum(t *testing.T) {
+	config := DefaultChannelModelHealthConfig()
+	config.CooldownSeconds = 20
+	config.MaxCooldownSeconds = 120
+	health := ChannelModelHealth{State: ChannelModelHealthHalfOpen}
+
+	health.ObserveFailure(100, 503, "upstream_error", "still unavailable", config)
+	assert.Equal(t, int64(120), health.CooldownUntil)
+
+	health.State = ChannelModelHealthHalfOpen
+	health.ObserveFailure(200, 503, "upstream_error", "still unavailable", config)
+	assert.Equal(t, int64(240), health.CooldownUntil)
+
+	health.State = ChannelModelHealthHalfOpen
+	health.ObserveFailure(300, 503, "upstream_error", "still unavailable", config)
+	assert.Equal(t, int64(360), health.CooldownUntil)
+
+	health.State = ChannelModelHealthHalfOpen
+	health.ObserveFailure(400, 503, "upstream_error", "still unavailable", config)
+	assert.Equal(t, int64(480), health.CooldownUntil)
+
+	health.State = ChannelModelHealthHalfOpen
+	health.ObserveFailure(500, 503, "upstream_error", "still unavailable", config)
+	assert.Equal(t, int64(600), health.CooldownUntil)
+
+	health.State = ChannelModelHealthHalfOpen
+	health.ObserveFailure(600, 503, "upstream_error", "still unavailable", config)
+	assert.Equal(t, int64(720), health.CooldownUntil)
+}
+
 func TestChannelModelHealthSuccessClosesHalfOpenState(t *testing.T) {
 	health := ChannelModelHealth{
 		State:              ChannelModelHealthHalfOpen,
@@ -245,6 +275,56 @@ func TestGetChannelModelHealthSummarySeparatesWaitingProbeFromActiveCircuit(t *t
 	require.Len(t, summary, 1)
 	assert.Equal(t, int64(1), summary[0].Open)
 	assert.Equal(t, int64(1), summary[0].Ready)
+}
+
+func TestListChannelModelHealthProbeCandidatesReturnsOnlyDueItems(t *testing.T) {
+	truncateTables(t)
+	now := common.GetTimestamp()
+	items := []ChannelModelHealth{
+		{
+			ChannelId:     11,
+			Group:         "default",
+			Model:         "open-ready",
+			State:         ChannelModelHealthOpen,
+			CooldownUntil: now - 1,
+		},
+		{
+			ChannelId:     12,
+			Group:         "default",
+			Model:         "open-cooling",
+			State:         ChannelModelHealthOpen,
+			CooldownUntil: now + 60,
+		},
+		{
+			ChannelId:          13,
+			Group:              "default",
+			Model:              "half-open-ready",
+			State:              ChannelModelHealthHalfOpen,
+			HalfOpenLeaseUntil: now - 1,
+		},
+		{
+			ChannelId:          14,
+			Group:              "default",
+			Model:              "half-open-busy",
+			State:              ChannelModelHealthHalfOpen,
+			HalfOpenLeaseUntil: now + 60,
+		},
+		{
+			ChannelId:     15,
+			Group:         "default",
+			Model:         "suspect",
+			State:         ChannelModelHealthSuspect,
+			FailureCount:  1,
+		},
+	}
+	require.NoError(t, DB.Create(&items).Error)
+
+	candidates, err := ListChannelModelHealthProbeCandidates(now, 10)
+
+	require.NoError(t, err)
+	require.Len(t, candidates, 2)
+	assert.Equal(t, 11, candidates[0].ChannelId)
+	assert.Equal(t, 13, candidates[1].ChannelId)
 }
 
 func TestGetChannelModelHealthSummaryIncludesProblematicModels(t *testing.T) {

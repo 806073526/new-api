@@ -91,12 +91,20 @@ const MODELS_SECTIONS = [
             settings['channel_model_health_setting.failure_threshold'],
           'channel_model_health_setting.failure_window_seconds':
             settings['channel_model_health_setting.failure_window_seconds'],
+          'channel_model_health_setting.first_response_timeout_seconds':
+            settings[
+              'channel_model_health_setting.first_response_timeout_seconds'
+            ],
           'channel_model_health_setting.cooldown_seconds':
             settings['channel_model_health_setting.cooldown_seconds'],
           'channel_model_health_setting.max_cooldown_seconds':
             settings['channel_model_health_setting.max_cooldown_seconds'],
           'channel_model_health_setting.half_open_lease_seconds':
             settings['channel_model_health_setting.half_open_lease_seconds'],
+          'channel_model_health_setting.active_probe_interval_seconds':
+            settings[
+              'channel_model_health_setting.active_probe_interval_seconds'
+            ],
           'channel_model_health_setting.excluded_channel_ids':
             settings['channel_model_health_setting.excluded_channel_ids'],
           'channel_model_health_setting.excluded_models':

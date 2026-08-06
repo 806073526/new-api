@@ -280,11 +280,25 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			}
 		}
 
+		if info.HasFirstResponseTimedOut() {
+			info.StreamStatus.SetEndReason(
+				relaycommon.StreamEndReasonFirstResponseTimeout,
+				fmt.Errorf("%s", relaycommon.FirstResponseTimeoutMessage),
+			)
+			return
+		}
 		if err := scanner.Err(); err != nil {
 			if err != io.EOF {
 				logger.LogError(c, "scanner error: "+err.Error())
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, err)
 			}
+		}
+		if info.HasFirstResponseTimedOut() {
+			info.StreamStatus.SetEndReason(
+				relaycommon.StreamEndReasonFirstResponseTimeout,
+				fmt.Errorf("%s", relaycommon.FirstResponseTimeoutMessage),
+			)
+			return
 		}
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
 	})

@@ -1306,7 +1306,6 @@ export function useChannelsColumns(
           const ratioTime = channel.upstream_ratio_updated_time
             ? formatRelativeTime(channel.upstream_ratio_updated_time, locale)
             : ''
-          const status = channel.upstream_sync_status || 'matched'
           return (
             <div
               className='flex min-w-0 flex-col text-xs'
@@ -1316,7 +1315,7 @@ export function useChannelsColumns(
                 {channel.upstream_ratio.toFixed(4)}
               </span>
               <span className='text-muted-foreground truncate'>
-                {channel.upstream_group || status}
+                {channel.upstream_group || t('Matched')}
                 {ratioTime ? ` · ${ratioTime}` : ''}
               </span>
             </div>

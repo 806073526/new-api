@@ -17,3 +17,7 @@ func TestChannelModelHealthSettingExclusions(t *testing.T) {
 	assert.True(t, setting.IsModelExcluded(" gpt-test "))
 	assert.False(t, setting.IsModelExcluded("gpt-other"))
 }
+
+func TestChannelModelHealthDefaultsDisableActiveProbe(t *testing.T) {
+	assert.Zero(t, channelModelHealthSetting.ActiveProbeIntervalSeconds)
+}

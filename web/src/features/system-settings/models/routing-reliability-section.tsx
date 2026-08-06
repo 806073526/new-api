@@ -98,9 +98,15 @@ const routingReliabilitySchema = z
       enabled: z.boolean(),
       failure_threshold: z.coerce.number().int().min(1).max(100),
       failure_window_seconds: z.coerce.number().int().min(1).max(86400),
+      first_response_timeout_seconds: z.coerce.number().int().min(0).max(3600),
       cooldown_seconds: z.coerce.number().int().min(1).max(86400),
       max_cooldown_seconds: z.coerce.number().int().min(1).max(604800),
       half_open_lease_seconds: z.coerce.number().int().min(1).max(3600),
+      active_probe_interval_seconds: z.coerce
+        .number()
+        .int()
+        .min(0)
+        .max(86400),
       excluded_channel_ids: excludedChannelIds,
       excluded_models: z.string(),
     }),
@@ -151,9 +157,11 @@ type RoutingReliabilitySectionProps = {
     'channel_model_health_setting.enabled': boolean
     'channel_model_health_setting.failure_threshold': number
     'channel_model_health_setting.failure_window_seconds': number
+    'channel_model_health_setting.first_response_timeout_seconds': number
     'channel_model_health_setting.cooldown_seconds': number
     'channel_model_health_setting.max_cooldown_seconds': number
     'channel_model_health_setting.half_open_lease_seconds': number
+    'channel_model_health_setting.active_probe_interval_seconds': number
     'channel_model_health_setting.excluded_channel_ids': number[]
     'channel_model_health_setting.excluded_models': string[]
   }
@@ -177,9 +185,11 @@ type NormalizedRoutingReliabilityValues = {
   'channel_model_health_setting.enabled': boolean
   'channel_model_health_setting.failure_threshold': number
   'channel_model_health_setting.failure_window_seconds': number
+  'channel_model_health_setting.first_response_timeout_seconds': number
   'channel_model_health_setting.cooldown_seconds': number
   'channel_model_health_setting.max_cooldown_seconds': number
   'channel_model_health_setting.half_open_lease_seconds': number
+  'channel_model_health_setting.active_probe_interval_seconds': number
   'channel_model_health_setting.excluded_channel_ids': string
   'channel_model_health_setting.excluded_models': string
 }
@@ -229,11 +239,17 @@ const buildFormDefaults = (
       defaults['channel_model_health_setting.failure_threshold'],
     failure_window_seconds:
       defaults['channel_model_health_setting.failure_window_seconds'],
+    first_response_timeout_seconds:
+      defaults['channel_model_health_setting.first_response_timeout_seconds'] ??
+      0,
     cooldown_seconds: defaults['channel_model_health_setting.cooldown_seconds'],
     max_cooldown_seconds:
       defaults['channel_model_health_setting.max_cooldown_seconds'],
     half_open_lease_seconds:
       defaults['channel_model_health_setting.half_open_lease_seconds'],
+    active_probe_interval_seconds:
+      defaults['channel_model_health_setting.active_probe_interval_seconds'] ??
+      0,
     excluded_channel_ids:
       defaults['channel_model_health_setting.excluded_channel_ids'].join(', '),
     excluded_models:
@@ -270,12 +286,18 @@ const normalizeDefaults = (
     defaults['channel_model_health_setting.failure_threshold'],
   'channel_model_health_setting.failure_window_seconds':
     defaults['channel_model_health_setting.failure_window_seconds'],
+  'channel_model_health_setting.first_response_timeout_seconds':
+    defaults['channel_model_health_setting.first_response_timeout_seconds'] ??
+    0,
   'channel_model_health_setting.cooldown_seconds':
     defaults['channel_model_health_setting.cooldown_seconds'],
   'channel_model_health_setting.max_cooldown_seconds':
     defaults['channel_model_health_setting.max_cooldown_seconds'],
   'channel_model_health_setting.half_open_lease_seconds':
     defaults['channel_model_health_setting.half_open_lease_seconds'],
+  'channel_model_health_setting.active_probe_interval_seconds':
+    defaults['channel_model_health_setting.active_probe_interval_seconds'] ??
+    0,
   'channel_model_health_setting.excluded_channel_ids': JSON.stringify(
     defaults['channel_model_health_setting.excluded_channel_ids']
   ),
@@ -311,12 +333,16 @@ const normalizeFormValues = (
     values.channel_model_health_setting.failure_threshold,
   'channel_model_health_setting.failure_window_seconds':
     values.channel_model_health_setting.failure_window_seconds,
+  'channel_model_health_setting.first_response_timeout_seconds':
+    values.channel_model_health_setting.first_response_timeout_seconds,
   'channel_model_health_setting.cooldown_seconds':
     values.channel_model_health_setting.cooldown_seconds,
   'channel_model_health_setting.max_cooldown_seconds':
     values.channel_model_health_setting.max_cooldown_seconds,
   'channel_model_health_setting.half_open_lease_seconds':
     values.channel_model_health_setting.half_open_lease_seconds,
+  'channel_model_health_setting.active_probe_interval_seconds':
+    values.channel_model_health_setting.active_probe_interval_seconds,
   'channel_model_health_setting.excluded_channel_ids': JSON.stringify(
     parseExcludedChannelIds(
       values.channel_model_health_setting.excluded_channel_ids
@@ -530,6 +556,31 @@ export function RoutingReliabilitySection({
               />
               <FormField
                 control={form.control}
+                name='channel_model_health_setting.first_response_timeout_seconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('First response timeout (seconds)')}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={3600}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Count one failure and retry another channel when no stream event arrives in time. Set 0 to disable.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
                 name='channel_model_health_setting.cooldown_seconds'
                 render={({ field }) => (
                   <FormItem>
@@ -564,7 +615,7 @@ export function RoutingReliabilitySection({
                       />
                     </FormControl>
                     <FormDescription>
-                      {t('Upper limit for exponential cooldown')}
+                      {t('Upper limit for linearly increasing cooldown')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -586,6 +637,31 @@ export function RoutingReliabilitySection({
                     </FormControl>
                     <FormDescription>
                       {t('Maximum time reserved for one recovery probe')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='channel_model_health_setting.active_probe_interval_seconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('Active probe interval (seconds)')}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={86400}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Run background recovery probes at this interval. Set 0 to disable.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

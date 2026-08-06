@@ -114,6 +114,7 @@ func cozeChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 		if line == "" {
 			if currentEvent != "" && currentData != "" {
 				// handle last event
+				info.SetFirstResponseTime()
 				handleCozeEvent(c, currentEvent, currentData, &responseText, usage, id, info)
 				currentEvent = ""
 				currentData = ""
@@ -134,6 +135,7 @@ func cozeChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 
 	// Last event
 	if currentEvent != "" && currentData != "" {
+		info.SetFirstResponseTime()
 		handleCozeEvent(c, currentEvent, currentData, &responseText, usage, id, info)
 	}
 

@@ -12,16 +12,148 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
-// RegisterScheduledSystemTasks wires the periodic channel test, upstream model
-// update, and async task polling (Midjourney / Suno / video) jobs into the
-// system task framework so a DB lease dedups execution across multiple master
-// instances and each run is recorded as one task row. Call this before
-// service.StartSystemTaskRunner.
+// RegisterScheduledSystemTasks wires periodic channel tests, model recovery
+// probes, upstream model updates, and async task polling (Midjourney / Suno /
+// video) into the system task framework so a DB lease dedups execution across
+// multiple master instances and each run is recorded as one task row. Call this
+// before service.StartSystemTaskRunner.
 func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(channelTestHandler{})
+	service.RegisterSystemTaskHandler(channelModelHealthProbeHandler{})
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+}
+
+// channelModelHealthProbeHandler runs recovery probes for model-level health
+// records whose cooldown or half-open lease has expired. It deliberately does
+// not change channel-level status and does not record normal consume logs.
+type channelModelHealthProbeHandler struct{}
+
+func (channelModelHealthProbeHandler) Type() string { return model.SystemTaskTypeChannelModelProbe }
+
+func (channelModelHealthProbeHandler) Enabled() bool {
+	setting := operation_setting.GetChannelModelHealthSetting()
+	return setting != nil && setting.Enabled && setting.ActiveProbeIntervalSeconds > 0
+}
+
+func (channelModelHealthProbeHandler) Interval() time.Duration {
+	seconds := operation_setting.GetChannelModelHealthSetting().ActiveProbeIntervalSeconds
+	if seconds <= 0 {
+		return time.Minute
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func (channelModelHealthProbeHandler) NewPayload() any { return nil }
+
+type channelModelHealthProbeSummary struct {
+	Candidates int `json:"candidates"`
+	Probed     int `json:"probed"`
+	Succeeded  int `json:"succeeded"`
+	Failed     int `json:"failed"`
+	Skipped    int `json:"skipped"`
+}
+
+const channelModelHealthProbeBatchSize = 100
+
+func (channelModelHealthProbeHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	summary, err := runChannelModelHealthProbeTask(ctx)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, summary, err)
+		return
+	}
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
+}
+
+func runChannelModelHealthProbeTask(ctx context.Context) (channelModelHealthProbeSummary, error) {
+	summary := channelModelHealthProbeSummary{}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	setting := operation_setting.GetChannelModelHealthSetting()
+	if setting == nil || !setting.Enabled || setting.ActiveProbeIntervalSeconds <= 0 {
+		return summary, nil
+	}
+
+	candidates, err := model.ListChannelModelHealthProbeCandidates(common.GetTimestamp(), channelModelHealthProbeBatchSize)
+	if err != nil {
+		return summary, err
+	}
+	summary.Candidates = len(candidates)
+	if len(candidates) == 0 {
+		return summary, nil
+	}
+	testUserID, err := resolveChannelTestUserID(nil)
+	if err != nil {
+		return summary, err
+	}
+	config := model.GetChannelModelHealthConfig()
+
+	for _, candidate := range candidates {
+		if err := ctx.Err(); err != nil {
+			return summary, err
+		}
+		if model.IsChannelModelHealthExcluded(candidate.ChannelId, candidate.Model) ||
+			!model.IsChannelEnabledForGroupModel(candidate.Group, candidate.Model, candidate.ChannelId) {
+			summary.Skipped++
+			continue
+		}
+
+		channel, err := model.CacheGetChannel(candidate.ChannelId)
+		if err != nil {
+			channel, err = model.GetChannelById(candidate.ChannelId, true)
+		}
+		if err != nil || channel == nil || channel.Status != common.ChannelStatusEnabled {
+			summary.Skipped++
+			continue
+		}
+
+		allowed, probe := model.TryAcquireChannelModel(candidate.ChannelId, candidate.Group, candidate.Model, common.GetTimestamp(), config)
+		if !allowed || !probe {
+			summary.Skipped++
+			continue
+		}
+
+		probeTimeout := channelModelHealthProbeTimeout(config)
+		probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+		result := testChannelWithOptions(
+			probeCtx,
+			channel,
+			testUserID,
+			candidate.Model,
+			"",
+			shouldUseStreamForAutomaticChannelTest(channel),
+			channelTestOptions{recordConsumeLog: false, group: candidate.Group},
+		)
+		cancel()
+		if err := ctx.Err(); err != nil {
+			return summary, err
+		}
+		summary.Probed++
+		if result.localErr == nil && result.newAPIError == nil {
+			model.ObserveChannelModelSuccess(candidate.ChannelId, candidate.Group, candidate.Model, common.GetTimestamp())
+			summary.Succeeded++
+			continue
+		}
+		if result.newAPIError != nil && model.ShouldObserveChannelModelFailure(result.newAPIError) {
+			model.ObserveChannelModelFailure(candidate.ChannelId, candidate.Group, candidate.Model, result.newAPIError, common.GetTimestamp(), config)
+			summary.Failed++
+			continue
+		}
+		summary.Skipped++
+	}
+	return summary, nil
+}
+
+func channelModelHealthProbeTimeout(config model.ChannelModelHealthConfig) time.Duration {
+	if config.FirstResponseTimeoutSeconds > 0 {
+		return time.Duration(config.FirstResponseTimeoutSeconds) * time.Second
+	}
+	if config.HalfOpenLeaseSeconds > 0 {
+		return time.Duration(config.HalfOpenLeaseSeconds) * time.Second
+	}
+	return 30 * time.Second
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and

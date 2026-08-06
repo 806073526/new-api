@@ -475,6 +475,13 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	return doRequest(c, req, info)
 }
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
+	if info != nil && info.IsStream && c != nil && c.Request != nil {
+		requestContext := info.StartFirstResponseTimeout(
+			c.Request.Context(),
+			time.Duration(info.FirstResponseTimeoutSeconds)*time.Second,
+		)
+		req = req.WithContext(requestContext)
+	}
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
@@ -512,6 +519,9 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if info.HasFirstResponseTimedOut() {
+			return nil, common.NewFirstResponseTimeoutError()
+		}
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
