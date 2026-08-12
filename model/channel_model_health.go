@@ -646,15 +646,17 @@ type channelModelHealthAbilityView struct {
 	ChannelStatus int    `gorm:"column:channel_status"`
 }
 
-// listChannelModelHealthViews merges persisted health observations with the
-// currently enabled channel/model abilities. Healthy pairs that have never
-// produced a health record are synthesized for display only and are never
-// written to channel_model_health.
+// listChannelModelHealthViews merges persisted health observations for current
+// channel/model abilities with enabled abilities that have no health record.
+// Health records for models removed from a channel are retained for history but
+// excluded from display. Synthesized healthy pairs are display-only and are
+// never written to channel_model_health.
 func listChannelModelHealthViews() ([]ChannelModelHealthView, error) {
 	var items []ChannelModelHealthView
 	healthQuery := DB.Table("channel_model_health").
 		Select("channel_model_health.*, channels.name AS channel_name, channels.status AS channel_status").
-		Joins("LEFT JOIN channels ON channels.id = channel_model_health.channel_id")
+		Joins("JOIN abilities ON abilities.channel_id = channel_model_health.channel_id AND abilities." + commonGroupCol + " = channel_model_health." + commonGroupCol + " AND abilities.model = channel_model_health.model").
+		Joins("JOIN channels ON channels.id = channel_model_health.channel_id")
 	if err := healthQuery.Scan(&items).Error; err != nil {
 		return nil, err
 	}

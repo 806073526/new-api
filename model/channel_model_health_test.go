@@ -291,6 +291,12 @@ func TestShouldObserveChannelModelFailure(t *testing.T) {
 func TestListChannelModelHealthJoinsChannelAndFilters(t *testing.T) {
 	truncateTables(t)
 	require.NoError(t, DB.Create(&Channel{Id: 11, Name: "cheap-provider", Status: 1}).Error)
+	require.NoError(t, DB.Create(&Ability{
+		ChannelId: 11,
+		Group:     "default",
+		Model:     "gpt-test",
+		Enabled:   true,
+	}).Error)
 	require.NoError(t, DB.Create(&ChannelModelHealth{
 		ChannelId: 11,
 		Group:     "default",
@@ -320,6 +326,7 @@ func TestListChannelModelHealthIncludesEnabledAbilityPairs(t *testing.T) {
 	}).Error)
 	require.NoError(t, DB.Create(&[]Ability{
 		{ChannelId: 11, Group: "default", Model: "healthy-model", Enabled: true},
+		{ChannelId: 11, Group: "default", Model: "broken-model", Enabled: true},
 		{ChannelId: 12, Group: "default", Model: "disabled-model", Enabled: false},
 	}).Error)
 	require.NoError(t, DB.Create(&ChannelModelHealth{
@@ -417,6 +424,11 @@ func TestListChannelModelHealthIncludesLatestMatchingRequestIdentity(t *testing.
 func TestGetChannelModelHealthSummarySeparatesWaitingProbeFromActiveCircuit(t *testing.T) {
 	truncateTables(t)
 	now := common.GetTimestamp()
+	require.NoError(t, DB.Create(&Channel{Id: 11, Name: "provider", Status: common.ChannelStatusEnabled}).Error)
+	require.NoError(t, DB.Create(&[]Ability{
+		{ChannelId: 11, Group: "default", Model: "waiting-probe", Enabled: true},
+		{ChannelId: 11, Group: "default", Model: "active-circuit", Enabled: true},
+	}).Error)
 	items := []ChannelModelHealth{
 		{
 			ChannelId:     11,
@@ -524,6 +536,11 @@ func TestGetChannelModelHealthSummaryIncludesProblematicModels(t *testing.T) {
 		Model:     "healthy-model",
 		Enabled:   true,
 	}).Error)
+	require.NoError(t, DB.Create(&[]Ability{
+		{ChannelId: 11, Group: "stable", Model: "gpt-5.6-luna", Enabled: true},
+		{ChannelId: 11, Group: "backup", Model: "claude-test", Enabled: true},
+		{ChannelId: 11, Group: "stable", Model: "recovered-model", Enabled: true},
+	}).Error)
 	items := []ChannelModelHealth{
 		{
 			ChannelId:      11,
@@ -593,6 +610,36 @@ func TestGetChannelModelHealthSummaryIncludesProblematicModels(t *testing.T) {
 	assert.Equal(t, "latest-token", summary[0].Issues[0].LastRequestTokenName)
 	assert.Equal(t, now, summary[0].Issues[0].LastRequestAt)
 	assert.Equal(t, "claude-test", summary[0].Issues[1].Model)
+}
+
+func TestGetChannelModelHealthSummaryExcludesRemovedModelHealthRecords(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Create(&Channel{
+		Id:     11,
+		Name:   "provider",
+		Status: common.ChannelStatusEnabled,
+	}).Error)
+	require.NoError(t, DB.Create(&Ability{
+		ChannelId: 11,
+		Group:     "stable",
+		Model:     "configured-model",
+		Enabled:   true,
+	}).Error)
+	require.NoError(t, DB.Create(&ChannelModelHealth{
+		ChannelId: 11,
+		Group:     "stable",
+		Model:     "removed-model",
+		State:     ChannelModelHealthOpen,
+	}).Error)
+
+	summary, err := GetChannelModelHealthSummaryForChannels([]int{11}, true)
+
+	require.NoError(t, err)
+	require.Len(t, summary, 1)
+	assert.Equal(t, int64(1), summary[0].Total)
+	require.Len(t, summary[0].Models, 1)
+	assert.Equal(t, "configured-model", summary[0].Models[0].Model)
+	assert.Empty(t, summary[0].Issues)
 }
 
 func TestResetChannelModelHealthOnlyRemovesMatchingPair(t *testing.T) {
