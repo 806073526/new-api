@@ -57,8 +57,24 @@ export function getChannelModelHealthIssueLabels(
   )
 }
 
-export function getChannelModelHealthCompactLabels(
-  issues: Array<{ model: string; group?: string }>
-): string[] {
-  return [...new Set(issues.map((issue) => issue.model).filter(Boolean))]
+export type ChannelModelHealthLastRequest = {
+  username: string
+  tokenName: string
+  requestAt: number
+}
+
+export function getChannelModelHealthLastRequest(
+  item: Pick<
+    ChannelModelHealth,
+    'last_request_username' | 'last_request_token_name' | 'last_request_at'
+  >
+): ChannelModelHealthLastRequest | null {
+  if (item.last_request_at <= 0) {
+    return null
+  }
+  return {
+    username: item.last_request_username,
+    tokenName: item.last_request_token_name,
+    requestAt: item.last_request_at,
+  }
 }

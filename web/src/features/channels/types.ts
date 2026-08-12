@@ -102,6 +102,9 @@ export type ChannelModelHealth = {
   last_status_code: number
   last_error_code: string
   last_error: string
+  last_request_username: string
+  last_request_token_name: string
+  last_request_at: number
   updated_at: number
   channel_name: string
   channel_status: number
@@ -129,6 +132,9 @@ export type ChannelModelHealthSummaryIssue = {
   last_status_code: number
   last_error_code: string
   last_error: string
+  last_request_username: string
+  last_request_token_name: string
+  last_request_at: number
 }
 
 export type ChannelActivityDetail = {

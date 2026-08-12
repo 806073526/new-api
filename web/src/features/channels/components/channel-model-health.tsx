@@ -58,6 +58,7 @@ import {
   type ChannelModelHealthDisplayState,
 } from '../lib/channel-model-health'
 import type { ChannelModelHealth } from '../types'
+import { ChannelModelHealthLastRequest } from './channel-model-health-last-request'
 
 const PAGE_SIZE = 30
 
@@ -227,6 +228,9 @@ export function ChannelModelHealthTable() {
                 : item.last_error || '-'}
             </span>
           </TableCell>
+          <TableCell className='min-w-52'>
+            <ChannelModelHealthLastRequest item={item} />
+          </TableCell>
           <TableCell className='text-right'>
             <Tooltip>
               <TooltipTrigger
@@ -252,7 +256,7 @@ export function ChannelModelHealthTable() {
   if (healthQuery.isLoading) {
     tableRows = (
       <TableRow>
-        <TableCell colSpan={9} className='h-28 text-center'>
+        <TableCell colSpan={10} className='h-28 text-center'>
           {t('Loading...')}
         </TableCell>
       </TableRow>
@@ -261,7 +265,7 @@ export function ChannelModelHealthTable() {
     tableRows = (
       <TableRow>
         <TableCell
-          colSpan={9}
+          colSpan={10}
           className='text-muted-foreground h-28 text-center'
         >
           {t('No model health records')}
@@ -364,6 +368,7 @@ export function ChannelModelHealthTable() {
               <TableHead>{t('Last failure')}</TableHead>
               <TableHead>{t('Cooldown until')}</TableHead>
               <TableHead>{t('Last error')}</TableHead>
+              <TableHead>{t('Last request')}</TableHead>
               <TableHead className='w-12 text-right'>{t('Actions')}</TableHead>
             </TableRow>
           </TableHeader>

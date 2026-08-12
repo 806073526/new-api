@@ -796,6 +796,8 @@
     "Last failure": "最近失败",
     "Cooldown until": "冷却至",
     "Last error": "最近错误",
+    "Last request": "最后请求",
+    "Last request: {{username}} user {{tokenName}} token {{time}}": "最后请求：{{username}}用户  {{tokenName}}令牌  {{time}}",
     "Circuit open": "熔断中",
     "Channel ID": "渠道 ID",
     "Channel ID is required": "缺少渠道 ID",

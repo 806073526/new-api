@@ -284,6 +284,72 @@ func TestListChannelModelHealthIncludesEnabledAbilityPairs(t *testing.T) {
 	assert.False(t, healthy.HealthRecordExists)
 }
 
+func TestListChannelModelHealthIncludesLatestMatchingRequestIdentity(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Create(&Channel{
+		Id:     11,
+		Name:   "provider",
+		Status: common.ChannelStatusEnabled,
+	}).Error)
+	require.NoError(t, DB.Create(&Ability{
+		ChannelId: 11,
+		Group:     "stable",
+		Model:     "gpt-test",
+		Enabled:   true,
+	}).Error)
+	require.NoError(t, LOG_DB.Create(&[]Log{
+		{
+			ChannelId: 11,
+			Group:     "stable",
+			ModelName: "gpt-test",
+			Username:  "old-user",
+			TokenName: "old-token",
+			CreatedAt: 100,
+			Type:      LogTypeConsume,
+		},
+		{
+			ChannelId: 11,
+			Group:     "stable",
+			ModelName: "gpt-test",
+			Username:  "latest-user",
+			TokenName: "latest-token",
+			CreatedAt: 200,
+			Type:      LogTypeError,
+		},
+		{
+			ChannelId: 11,
+			Group:     "other-group",
+			ModelName: "gpt-test",
+			Username:  "wrong-group-user",
+			TokenName: "wrong-group-token",
+			CreatedAt: 300,
+			Type:      LogTypeConsume,
+		},
+		{
+			ChannelId: 11,
+			Group:     "stable",
+			ModelName: "other-model",
+			Username:  "wrong-model-user",
+			TokenName: "wrong-model-token",
+			CreatedAt: 400,
+			Type:      LogTypeConsume,
+		},
+	}).Error)
+
+	items, total, err := ListChannelModelHealth(ChannelModelHealthListParams{
+		ChannelId: 11,
+		Page:      1,
+		PageSize:  20,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, items, 1)
+	assert.Equal(t, "latest-user", items[0].LastRequestUsername)
+	assert.Equal(t, "latest-token", items[0].LastRequestTokenName)
+	assert.Equal(t, int64(200), items[0].LastRequestAt)
+}
+
 func TestGetChannelModelHealthSummarySeparatesWaitingProbeFromActiveCircuit(t *testing.T) {
 	truncateTables(t)
 	now := common.GetTimestamp()
@@ -405,6 +471,15 @@ func TestGetChannelModelHealthSummaryIncludesProblematicModels(t *testing.T) {
 		},
 	}
 	require.NoError(t, DB.Create(&items).Error)
+	require.NoError(t, LOG_DB.Create(&Log{
+		ChannelId: 11,
+		Group:     "stable",
+		ModelName: "gpt-5.6-luna",
+		Username:  "latest-user",
+		TokenName: "latest-token",
+		CreatedAt: now,
+		Type:      LogTypeError,
+	}).Error)
 
 	summary, err := GetChannelModelHealthSummary()
 
@@ -419,6 +494,9 @@ func TestGetChannelModelHealthSummaryIncludesProblematicModels(t *testing.T) {
 	assert.Equal(t, ChannelModelHealthOpen, summary[0].Issues[0].State)
 	assert.False(t, summary[0].Issues[0].Ready)
 	assert.Equal(t, 502, summary[0].Issues[0].LastStatusCode)
+	assert.Equal(t, "latest-user", summary[0].Issues[0].LastRequestUsername)
+	assert.Equal(t, "latest-token", summary[0].Issues[0].LastRequestTokenName)
+	assert.Equal(t, now, summary[0].Issues[0].LastRequestAt)
 	assert.Equal(t, "claude-test", summary[0].Issues[1].Model)
 }
 

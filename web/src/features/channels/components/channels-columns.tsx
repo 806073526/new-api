@@ -86,7 +86,6 @@ import {
   formatChannelActivityIdentity,
   getTopChannelActivityDetails,
 } from '../lib/channel-activity'
-import { getChannelModelHealthCompactLabels } from '../lib/channel-model-health'
 import { parseUpstreamUpdateMeta } from '../lib/upstream-update-utils'
 import type {
   Channel,
@@ -94,6 +93,7 @@ import type {
   ChannelModelHealthSummary,
 } from '../types'
 import { ChannelModelHealthClosedDetailsPopover } from './channel-model-health-closed-details-popover'
+import { ChannelModelHealthLastRequest } from './channel-model-health-last-request'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
 import { useChannels } from './channels-provider'
 import { DataTableRowActions } from './data-table-row-actions'
@@ -1081,7 +1081,6 @@ export function useChannelsColumns(
             return <Badge variant='outline'>{t('Healthy')}</Badge>
           }
           const issues = summary.issues ?? []
-          const issueLabels = getChannelModelHealthCompactLabels(issues)
           const stateLabel = (issue: (typeof issues)[number]) => {
             const state = issue.ready ? 'ready' : issue.state
             if (state === 'open') return t('Circuit open')
@@ -1133,27 +1132,16 @@ export function useChannelsColumns(
                     />
                   }
                 >
-                  <span className='inline-flex min-w-0 flex-col gap-1'>
-                    <span className='inline-flex min-w-0 flex-wrap gap-1'>
-                      {issueBadges}
-                    </span>
-                    <span
-                      className='text-muted-foreground block max-w-full truncate text-xs'
-                      title={issueLabels.join(', ')}
-                    >
-                      {issueLabels.slice(0, 2).join(', ')}
-                      {issueLabels.length > 2
-                        ? ` +${issueLabels.length - 2}`
-                        : ''}
-                    </span>
+                  <span className='inline-flex min-w-0 flex-wrap gap-1'>
+                    {issueBadges}
                   </span>
                 </PopoverTrigger>
-                <PopoverContent className='max-h-80 max-w-96 overflow-y-auto'>
-                  <div className='space-y-1.5'>
+                <PopoverContent className='max-h-96 w-[34rem] max-w-[calc(100vw-2rem)] overflow-auto'>
+                  <div className='space-y-3'>
                     {issues.map((issue) => (
                       <div
                         key={`${issue.group}:${issue.model}`}
-                        className='text-xs'
+                        className='border-border/60 border-b pb-3 text-xs last:border-b-0 last:pb-0'
                       >
                         <div className='font-mono'>{issue.model}</div>
                         <div className='text-muted-foreground'>
@@ -1167,6 +1155,7 @@ export function useChannelsColumns(
                             {issue.last_error_code || issue.last_error}
                           </div>
                         )}
+                        <ChannelModelHealthLastRequest item={issue} />
                       </div>
                     ))}
                   </div>
@@ -1174,22 +1163,30 @@ export function useChannelsColumns(
               </Popover>
             )
           return (
-            <div className='flex min-w-0 flex-wrap items-start gap-1'>
-              {healthy > 0 && (
-                <ChannelModelHealthClosedDetailsPopover
-                  channelId={row.original.id}
-                  count={healthy}
-                  state='healthy'
-                />
+            <div className='flex min-w-0 flex-col gap-1'>
+              {(healthy > 0 || recovered > 0) && (
+                <div className='flex min-w-0 flex-wrap gap-1'>
+                  {healthy > 0 && (
+                    <ChannelModelHealthClosedDetailsPopover
+                      channelId={row.original.id}
+                      count={healthy}
+                      state='healthy'
+                    />
+                  )}
+                  {recovered > 0 && (
+                    <ChannelModelHealthClosedDetailsPopover
+                      channelId={row.original.id}
+                      count={recovered}
+                      state='recovered'
+                    />
+                  )}
+                </div>
               )}
-              {recovered > 0 && (
-                <ChannelModelHealthClosedDetailsPopover
-                  channelId={row.original.id}
-                  count={recovered}
-                  state='recovered'
-                />
+              {active > 0 && (
+                <div className='flex min-w-0 flex-wrap gap-1'>
+                  {issueContent}
+                </div>
               )}
-              {active > 0 && issueContent}
             </div>
           )
         },

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -64,9 +65,12 @@ type ChannelModelHealth struct {
 
 type ChannelModelHealthView struct {
 	ChannelModelHealth
-	ChannelName        string `json:"channel_name" gorm:"column:channel_name"`
-	ChannelStatus      int    `json:"channel_status" gorm:"column:channel_status"`
-	HealthRecordExists bool   `json:"health_record_exists" gorm:"-"`
+	ChannelName          string `json:"channel_name" gorm:"column:channel_name"`
+	ChannelStatus        int    `json:"channel_status" gorm:"column:channel_status"`
+	HealthRecordExists   bool   `json:"health_record_exists" gorm:"-"`
+	LastRequestUsername  string `json:"last_request_username" gorm:"-"`
+	LastRequestTokenName string `json:"last_request_token_name" gorm:"-"`
+	LastRequestAt        int64  `json:"last_request_at" gorm:"-"`
 }
 
 type ChannelModelHealthListParams struct {
@@ -91,14 +95,17 @@ type ChannelModelHealthSummaryItem struct {
 }
 
 type ChannelModelHealthSummaryIssue struct {
-	Group          string                  `json:"group"`
-	Model          string                  `json:"model"`
-	State          ChannelModelHealthState `json:"state"`
-	Ready          bool                    `json:"ready"`
-	FailureCount   int                     `json:"failure_count"`
-	LastStatusCode int                     `json:"last_status_code"`
-	LastErrorCode  string                  `json:"last_error_code"`
-	LastError      string                  `json:"last_error"`
+	Group                string                  `json:"group"`
+	Model                string                  `json:"model"`
+	State                ChannelModelHealthState `json:"state"`
+	Ready                bool                    `json:"ready"`
+	FailureCount         int                     `json:"failure_count"`
+	LastStatusCode       int                     `json:"last_status_code"`
+	LastErrorCode        string                  `json:"last_error_code"`
+	LastError            string                  `json:"last_error"`
+	LastRequestUsername  string                  `json:"last_request_username"`
+	LastRequestTokenName string                  `json:"last_request_token_name"`
+	LastRequestAt        int64                   `json:"last_request_at"`
 }
 
 func (ChannelModelHealth) TableName() string {
@@ -230,6 +237,19 @@ type channelModelHealthKey struct {
 	Model     string
 }
 
+type channelModelHealthLastRequest struct {
+	ChannelId int    `gorm:"column:channel_id"`
+	Group     string `gorm:"column:request_group"`
+	Model     string `gorm:"column:model_name"`
+	Username  string `gorm:"column:username"`
+	TokenName string `gorm:"column:token_name"`
+	CreatedAt int64  `gorm:"column:created_at"`
+	Id        int    `gorm:"column:id"`
+	RequestId string `gorm:"column:request_id"`
+}
+
+const channelModelHealthRequestInfoBatchSize = 100
+
 var channelModelHealthCache = struct {
 	sync.RWMutex
 	items map[channelModelHealthKey]*ChannelModelHealth
@@ -241,6 +261,102 @@ func normalizeChannelModelHealthKey(channelId int, group, model string) channelM
 		Group:     strings.TrimSpace(group),
 		Model:     strings.TrimSpace(model),
 	}
+}
+
+func latestChannelModelHealthRequestInfo(keys []channelModelHealthKey) (map[channelModelHealthKey]channelModelHealthLastRequest, error) {
+	requests := make(map[channelModelHealthKey]channelModelHealthLastRequest)
+	if LOG_DB == nil || len(keys) == 0 {
+		return requests, nil
+	}
+
+	uniqueKeys := make([]channelModelHealthKey, 0, len(keys))
+	seen := make(map[channelModelHealthKey]struct{}, len(keys))
+	for _, key := range keys {
+		key = normalizeChannelModelHealthKey(key.ChannelId, key.Group, key.Model)
+		if key.ChannelId <= 0 || key.Model == "" {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		uniqueKeys = append(uniqueKeys, key)
+	}
+
+	for start := 0; start < len(uniqueKeys); start += channelModelHealthRequestInfoBatchSize {
+		end := start + channelModelHealthRequestInfoBatchSize
+		if end > len(uniqueKeys) {
+			end = len(uniqueKeys)
+		}
+		batch := uniqueKeys[start:end]
+		conditions := make([]string, 0, len(batch))
+		args := make([]interface{}, 0, 4+len(batch)*3)
+		args = append(args, LogTypeConsume, LogTypeError)
+		for _, key := range batch {
+			conditions = append(conditions, "(channel_id = ? AND model_name = ? AND "+logGroupCol+" = ?)")
+			args = append(args, key.ChannelId, key.Model, key.Group)
+		}
+
+		args = append(args, LogTypeConsume, LogTypeError)
+		query := fmt.Sprintf(`
+SELECT l.channel_id, l.model_name, l.%s AS request_group, l.username, l.token_name, l.created_at, l.id, l.request_id
+FROM logs AS l
+INNER JOIN (
+	SELECT channel_id AS latest_channel_id, model_name AS latest_model_name, %s AS latest_group,
+		MAX(created_at) AS latest_created_at
+	FROM logs
+	WHERE type IN (?, ?) AND (%s)
+	GROUP BY channel_id, model_name, %s
+) AS latest_requests
+	ON l.channel_id = latest_requests.latest_channel_id
+	AND l.model_name = latest_requests.latest_model_name
+	AND l.%s = latest_requests.latest_group
+	AND l.created_at = latest_requests.latest_created_at
+WHERE l.type IN (?, ?)
+ORDER BY l.created_at DESC, l.id DESC, l.request_id DESC`,
+			logGroupCol,
+			logGroupCol,
+			strings.Join(conditions, " OR "),
+			logGroupCol,
+			logGroupCol,
+		)
+
+		var rows []channelModelHealthLastRequest
+		if err := LOG_DB.Raw(query, args...).Scan(&rows).Error; err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			key := normalizeChannelModelHealthKey(row.ChannelId, row.Group, row.Model)
+			if _, exists := requests[key]; exists {
+				continue
+			}
+			requests[key] = row
+		}
+	}
+
+	return requests, nil
+}
+
+func attachLatestChannelModelHealthRequestInfo(items []ChannelModelHealthView) error {
+	keys := make([]channelModelHealthKey, 0, len(items))
+	for _, item := range items {
+		keys = append(keys, normalizeChannelModelHealthKey(item.ChannelId, item.Group, item.Model))
+	}
+	requests, err := latestChannelModelHealthRequestInfo(keys)
+	if err != nil {
+		return err
+	}
+	for index := range items {
+		key := normalizeChannelModelHealthKey(items[index].ChannelId, items[index].Group, items[index].Model)
+		request, exists := requests[key]
+		if !exists {
+			continue
+		}
+		items[index].LastRequestUsername = request.Username
+		items[index].LastRequestTokenName = request.TokenName
+		items[index].LastRequestAt = request.CreatedAt
+	}
+	return nil
 }
 
 func InitChannelModelHealthCache() {
@@ -552,7 +668,11 @@ func ListChannelModelHealth(params ChannelModelHealthListParams) ([]ChannelModel
 	if end > len(items) {
 		end = len(items)
 	}
-	return items[start:end], total, nil
+	pageItems := items[start:end]
+	if err := attachLatestChannelModelHealthRequestInfo(pageItems); err != nil {
+		return nil, 0, err
+	}
+	return pageItems, total, nil
 }
 
 func GetChannelModelHealthSummary() ([]ChannelModelHealthSummaryItem, error) {
@@ -607,6 +727,29 @@ func GetChannelModelHealthSummary() ([]ChannelModelHealthSummaryItem, error) {
 				LastErrorCode:  view.LastErrorCode,
 				LastError:      view.LastError,
 			})
+		}
+	}
+	issueKeys := make([]channelModelHealthKey, 0)
+	for _, item := range byChannel {
+		for _, issue := range item.Issues {
+			issueKeys = append(issueKeys, normalizeChannelModelHealthKey(item.ChannelId, issue.Group, issue.Model))
+		}
+	}
+	requests, err := latestChannelModelHealthRequestInfo(issueKeys)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range byChannel {
+		for index := range item.Issues {
+			issue := &item.Issues[index]
+			key := normalizeChannelModelHealthKey(item.ChannelId, issue.Group, issue.Model)
+			request, exists := requests[key]
+			if !exists {
+				continue
+			}
+			issue.LastRequestUsername = request.Username
+			issue.LastRequestTokenName = request.TokenName
+			issue.LastRequestAt = request.CreatedAt
 		}
 	}
 	items := make([]ChannelModelHealthSummaryItem, 0, len(byChannel))

@@ -36,6 +36,9 @@ const baseHealth: ChannelModelHealth = {
   last_status_code: 502,
   last_error_code: 'upstream_error',
   last_error: 'upstream unavailable',
+  last_request_username: '',
+  last_request_token_name: '',
+  last_request_at: 0,
   updated_at: 100,
   channel_name: 'test-channel',
   channel_status: 1,
@@ -70,19 +73,33 @@ describe('channel model health display state', () => {
     )
   })
 
-  test('returns unique model labels without groups for the channel list', () => {
-    const getCompactLabels = Reflect.get(
+  test('does not expose a last request when no matching request log exists', () => {
+    const getLastRequest = Reflect.get(
       channelModelHealth,
-      'getChannelModelHealthCompactLabels'
+      'getChannelModelHealthLastRequest'
     )
-    assert.equal(typeof getCompactLabels, 'function')
+    assert.equal(typeof getLastRequest, 'function')
+    assert.equal(getLastRequest(baseHealth), null)
+  })
+
+  test('returns the latest requester details when a matching request log exists', () => {
+    const getLastRequest = Reflect.get(
+      channelModelHealth,
+      'getChannelModelHealthLastRequest'
+    )
+    assert.equal(typeof getLastRequest, 'function')
     assert.deepEqual(
-      getCompactLabels([
-        { model: 'gpt-5.6-luna', group: 'stable' },
-        { model: 'gpt-5.6-luna', group: 'backup' },
-        { model: 'claude-test', group: 'backup' },
-      ]),
-      ['gpt-5.6-luna', 'claude-test']
+      getLastRequest({
+        ...baseHealth,
+        last_request_username: 'company-user',
+        last_request_token_name: 'company-token',
+        last_request_at: 1_754_000_000,
+      }),
+      {
+        username: 'company-user',
+        tokenName: 'company-token',
+        requestAt: 1_754_000_000,
+      }
     )
   })
 

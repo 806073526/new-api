@@ -32,6 +32,7 @@ import {
   getChannelModelHealthClosedItems,
   type ChannelModelHealthClosedDisplayState,
 } from '../lib/channel-model-health'
+import { ChannelModelHealthLastRequest } from './channel-model-health-last-request'
 
 type ChannelModelHealthClosedDetailsPopoverProps = {
   channelId: number
@@ -80,11 +81,15 @@ export function ChannelModelHealthClosedDetailsPopover(
       detailContent = (
         <>
           {items.map((item) => (
-            <div key={`${item.group}:${item.model}`} className='text-xs'>
+            <div
+              key={`${item.group}:${item.model}`}
+              className='border-border/60 border-b pb-3 text-xs last:border-b-0 last:pb-0'
+            >
               <div className='font-mono'>{item.model}</div>
               <div className='text-muted-foreground'>
                 {item.group} · {title}
               </div>
+              <ChannelModelHealthLastRequest item={item} />
             </div>
           ))}
         </>
@@ -116,8 +121,8 @@ export function ChannelModelHealthClosedDetailsPopover(
           </Badge>
         )}
       </PopoverTrigger>
-      <PopoverContent className='max-h-80 max-w-96 overflow-y-auto'>
-        <div className='space-y-1.5'>
+      <PopoverContent className='max-h-96 w-[34rem] max-w-[calc(100vw-2rem)] overflow-auto'>
+        <div className='space-y-3'>
           <div className='text-muted-foreground text-xs'>
             {title} {props.count}
           </div>

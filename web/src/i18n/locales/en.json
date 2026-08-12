@@ -796,6 +796,8 @@
     "Last failure": "Last failure",
     "Cooldown until": "Cooldown until",
     "Last error": "Last error",
+    "Last request": "Last request",
+    "Last request: {{username}} user {{tokenName}} token {{time}}": "Last request: {{username}} user {{tokenName}} token {{time}}",
     "Circuit open": "Circuit open",
     "Channel ID": "Channel ID",
     "Channel ID is required": "Channel ID is required",
