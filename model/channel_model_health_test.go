@@ -642,6 +642,37 @@ func TestGetChannelModelHealthSummaryExcludesRemovedModelHealthRecords(t *testin
 	assert.Empty(t, summary[0].Issues)
 }
 
+func TestGetChannelModelHealthSummaryExcludesRemovedGroupHealthRecords(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Create(&Channel{
+		Id:     11,
+		Name:   "provider",
+		Status: common.ChannelStatusEnabled,
+	}).Error)
+	require.NoError(t, DB.Create(&Ability{
+		ChannelId: 11,
+		Group:     "configured-group",
+		Model:     "configured-model",
+		Enabled:   true,
+	}).Error)
+	require.NoError(t, DB.Create(&ChannelModelHealth{
+		ChannelId: 11,
+		Group:     "removed-group",
+		Model:     "configured-model",
+		State:     ChannelModelHealthOpen,
+	}).Error)
+
+	summary, err := GetChannelModelHealthSummaryForChannels([]int{11}, true)
+
+	require.NoError(t, err)
+	require.Len(t, summary, 1)
+	assert.Equal(t, int64(1), summary[0].Total)
+	require.Len(t, summary[0].Models, 1)
+	assert.Equal(t, "configured-group", summary[0].Models[0].Group)
+	assert.Equal(t, "configured-model", summary[0].Models[0].Model)
+	assert.Empty(t, summary[0].Issues)
+}
+
 func TestResetChannelModelHealthOnlyRemovesMatchingPair(t *testing.T) {
 	truncateTables(t)
 	items := []ChannelModelHealth{
