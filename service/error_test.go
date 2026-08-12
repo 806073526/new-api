@@ -122,6 +122,20 @@ func TestRelayErrorHandlerKeepsOpenAIErrorMessage(t *testing.T) {
 	require.Equal(t, message, newAPIError.Error())
 }
 
+func TestRelayErrorHandlerClassifiesUpstreamModelNotFound(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusNotFound,
+		Body: io.NopCloser(strings.NewReader(
+			`{"error":{"message":"model is unavailable","type":"model_not_found"}}`,
+		)),
+	}
+
+	newAPIError := RelayErrorHandler(context.Background(), resp, false)
+
+	require.NotNil(t, newAPIError)
+	require.Equal(t, types.ErrorCodeModelNotFound, newAPIError.GetErrorCode())
+}
+
 func TestRelayErrorHandlerKeepsInvalidJSONBodyInDebugLog(t *testing.T) {
 	withDebugEnabled(t, true)
 

@@ -154,6 +154,12 @@ export function groupChannelModelHealthSummaryModels(
     })
 }
 
+export function hasMultipleChannelModelHealthGroups(
+  items: Array<Pick<ChannelModelHealthSummaryGroup, 'group'>>
+): boolean {
+  return new Set(items.map((item) => item.group)).size > 1
+}
+
 export function getChannelModelHealthIssueLabels(
   issues: Array<{ model: string; group: string }>
 ): string[] {

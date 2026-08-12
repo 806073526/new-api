@@ -117,6 +117,9 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		// General format error (OpenAI, Anthropic, Gemini, etc.)
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
+			if isUpstreamModelNotFoundError(*oaiError) {
+				oaiError.Code = types.ErrorCodeModelNotFound
+			}
 			newApiErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
 			if showBodyWhenFail {
 				newApiErr.Err = buildErrWithBody(newApiErr.Error())
@@ -135,6 +138,11 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		newApiErr.Err = buildErrWithBody(newApiErr.Error())
 	}
 	return
+}
+
+func isUpstreamModelNotFoundError(openAIError types.OpenAIError) bool {
+	return openAIError.Type == string(types.ErrorCodeModelNotFound) ||
+		fmt.Sprint(openAIError.Code) == string(types.ErrorCodeModelNotFound)
 }
 
 func ResetStatusCode(newApiErr *types.NewAPIError, statusCodeMappingStr string) {

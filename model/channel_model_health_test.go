@@ -281,6 +281,7 @@ func TestBuildChannelModelIndexUsesEnabledAbilities(t *testing.T) {
 func TestShouldObserveChannelModelFailure(t *testing.T) {
 	assert.True(t, ShouldObserveChannelModelFailure(testNewAPIError(503, "bad_response_status")))
 	assert.True(t, ShouldObserveChannelModelFailure(testNewAPIError(404, "model_not_found")))
+	assert.False(t, ShouldObserveChannelModelFailure(testNewAPIError(404, "bad_response_status_code")))
 	assert.False(t, ShouldObserveChannelModelFailure(testNewAPIError(400, "invalid_request")))
 	assert.False(t, ShouldObserveChannelModelFailure(testNewAPIError(401, "bad_response_status_code")))
 	assert.False(t, ShouldObserveChannelModelFailure(testNewAPIError(402, "bad_response_status_code")))

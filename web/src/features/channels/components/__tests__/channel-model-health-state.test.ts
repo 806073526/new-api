@@ -246,4 +246,20 @@ describe('channel model health display state', () => {
       ]
     )
   })
+
+  test('shows group labels only when the health display has multiple groups', () => {
+    const hasMultipleGroups = Reflect.get(
+      channelModelHealth,
+      'hasMultipleChannelModelHealthGroups'
+    )
+    assert.equal(typeof hasMultipleGroups, 'function')
+    assert.equal(
+      hasMultipleGroups([{ group: 'default' }, { group: 'default' }]),
+      false
+    )
+    assert.equal(
+      hasMultipleGroups([{ group: 'alpha' }, { group: 'beta' }]),
+      true
+    )
+  })
 })

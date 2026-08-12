@@ -103,6 +103,7 @@ import {
 import {
   getChannelModelHealthPresentationLabelKey,
   groupChannelModelHealthSummaryModels,
+  hasMultipleChannelModelHealthGroups,
 } from '../../lib/channel-model-health'
 import type {
   Channel,
@@ -675,6 +676,9 @@ function ChannelTestDialogContent({
         updateTestResult(model, finalResult)
       } finally {
         markModelTesting(model, false)
+        void queryClient.invalidateQueries({
+          queryKey: ['channel-model-health-summary', currentChannelId],
+        })
         if (refreshList) {
           refreshChannelLists(
             createChannelTestCachePatch(
@@ -688,9 +692,11 @@ function ChannelTestDialogContent({
     },
     [
       currentRow,
+      currentChannelId,
       endpointType,
       effectiveStreamTest,
       markModelTesting,
+      queryClient,
       refreshChannelLists,
       t,
       updateTestResult,
@@ -1014,11 +1020,16 @@ function ChannelTestDialogContent({
           if (groups.length === 0) {
             return <span className='text-muted-foreground text-sm'>-</span>
           }
+          const showGroup = hasMultipleChannelModelHealthGroups(groups)
           return (
-            <div className='space-y-0.5 text-xs'>
+            <div className='space-y-0.5 text-left text-xs'>
               {groups.map((item) => (
                 <div key={`${item.state}:${item.group}`}>
-                  {item.group} {t('Group')}:{' '}
+                  {showGroup && (
+                    <>
+                      {item.group} {t('Group')}:{' '}
+                    </>
+                  )}
                   {t(getChannelModelHealthPresentationLabelKey(item.state))}
                 </div>
               ))}

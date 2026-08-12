@@ -89,6 +89,7 @@ import {
 import {
   getChannelModelHealthPresentationLabelKey,
   groupChannelModelHealthSummaryModels,
+  hasMultipleChannelModelHealthGroups,
 } from '../lib/channel-model-health'
 import { parseUpstreamUpdateMeta } from '../lib/upstream-update-utils'
 import type {
@@ -1080,6 +1081,7 @@ export function useChannelsColumns(
           if (groups.length === 0) {
             return <span className='text-muted-foreground'>-</span>
           }
+          const showGroup = hasMultipleChannelModelHealthGroups(groups)
           const healthSections: Array<{
             state: (typeof groups)[number]['state']
             items: Array<(typeof groups)[number]>
@@ -1095,7 +1097,7 @@ export function useChannelsColumns(
             healthSections.push({ state: item.state, items: [item] })
           }
           return (
-            <div className='min-w-80 space-y-2 py-1 text-xs'>
+            <div className='min-w-80 space-y-2 py-1 text-left text-xs'>
               {healthSections.map((section) => (
                 <div key={section.state}>
                   <div className='font-medium'>
@@ -1105,8 +1107,8 @@ export function useChannelsColumns(
                     :
                   </div>
                   {section.items.map((item) => (
-                    <div key={item.group} className='pl-2'>
-                      {item.group}:{' '}
+                    <div key={item.group}>
+                      {showGroup && <>{item.group}: </>}
                       <span className='font-mono'>
                         {item.models.join('、')}
                       </span>
