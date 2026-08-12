@@ -92,6 +92,15 @@ type ChannelModelHealthSummaryItem struct {
 	HalfOpen  int64                            `json:"half_open"`
 	Closed    int64                            `json:"closed"`
 	Issues    []ChannelModelHealthSummaryIssue `json:"issues,omitempty"`
+	Models    []ChannelModelHealthSummaryModel `json:"models,omitempty"`
+}
+
+type ChannelModelHealthSummaryModel struct {
+	Group              string                  `json:"group"`
+	Model              string                  `json:"model"`
+	State              ChannelModelHealthState `json:"state"`
+	Ready              bool                    `json:"ready"`
+	HealthRecordExists bool                    `json:"health_record_exists"`
 }
 
 type ChannelModelHealthSummaryIssue struct {
@@ -439,6 +448,91 @@ func IsChannelModelHealthExcluded(channelId int, model string) bool {
 	return setting.IsChannelExcluded(channelId) || setting.IsModelExcluded(model)
 }
 
+// GetChannelModelHealthGroups returns every configured group for one channel
+// model pair. Channel tests and manual controls use the same group set so a
+// selected model always affects all of that channel's groups.
+func GetChannelModelHealthGroups(channelId int, model string) ([]string, error) {
+	if DB == nil || channelId <= 0 || strings.TrimSpace(model) == "" {
+		return []string{}, nil
+	}
+
+	var groups []string
+	err := DB.Model(&Ability{}).
+		Where("channel_id = ? AND model = ?", channelId, strings.TrimSpace(model)).
+		Distinct(commonGroupCol).
+		Pluck(commonGroupCol, &groups).Error
+	if err != nil {
+		return nil, err
+	}
+
+	uniqueGroups := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		group = strings.TrimSpace(group)
+		if group != "" {
+			uniqueGroups[group] = struct{}{}
+		}
+	}
+	groups = groups[:0]
+	for group := range uniqueGroups {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+	return groups, nil
+}
+
+func OpenChannelModelHealth(channelId int, model string, now int64) (int, error) {
+	model = strings.TrimSpace(model)
+	if !IsChannelModelHealthEnabled() {
+		return 0, fmt.Errorf("channel model health is disabled")
+	}
+	if IsChannelModelHealthExcluded(channelId, model) {
+		return 0, fmt.Errorf("channel model health is excluded")
+	}
+	groups, err := GetChannelModelHealthGroups(channelId, model)
+	if err != nil {
+		return 0, err
+	}
+
+	config := GetChannelModelHealthConfig()
+	for _, group := range groups {
+		key := normalizeChannelModelHealthKey(channelId, group, model)
+		channelModelHealthCache.Lock()
+		health := channelModelHealthCache.items[key]
+		if health == nil {
+			health = &ChannelModelHealth{
+				ChannelId: channelId,
+				Group:     key.Group,
+				Model:     key.Model,
+				State:     ChannelModelHealthClosed,
+			}
+			channelModelHealthCache.items[key] = health
+		}
+		health.open(now, config)
+		snapshot := *health
+		channelModelHealthCache.Unlock()
+		PersistChannelModelHealth(&snapshot)
+	}
+	return len(groups), nil
+}
+
+func RecoverChannelModelHealth(channelId int, model string, now int64) (int, error) {
+	model = strings.TrimSpace(model)
+	if !IsChannelModelHealthEnabled() {
+		return 0, fmt.Errorf("channel model health is disabled")
+	}
+	if IsChannelModelHealthExcluded(channelId, model) {
+		return 0, fmt.Errorf("channel model health is excluded")
+	}
+	groups, err := GetChannelModelHealthGroups(channelId, model)
+	if err != nil {
+		return 0, err
+	}
+	for _, group := range groups {
+		ObserveChannelModelSuccess(channelId, group, model, now)
+	}
+	return len(groups), nil
+}
+
 func IsChannelModelRoutable(channelId int, group, model string, now int64) bool {
 	if !IsChannelModelHealthEnabled() || IsChannelModelHealthExcluded(channelId, model) {
 		return true
@@ -603,6 +697,28 @@ func listChannelModelHealthViews() ([]ChannelModelHealthView, error) {
 	return items, nil
 }
 
+func filterChannelModelHealthViewsByChannelIDs(views []ChannelModelHealthView, channelIDs []int) []ChannelModelHealthView {
+	if len(channelIDs) == 0 {
+		return views
+	}
+	allowed := make(map[int]struct{}, len(channelIDs))
+	for _, channelID := range channelIDs {
+		if channelID > 0 {
+			allowed[channelID] = struct{}{}
+		}
+	}
+	if len(allowed) == 0 {
+		return []ChannelModelHealthView{}
+	}
+	filtered := views[:0]
+	for _, view := range views {
+		if _, ok := allowed[view.ChannelId]; ok {
+			filtered = append(filtered, view)
+		}
+	}
+	return filtered
+}
+
 func ListChannelModelHealth(params ChannelModelHealthListParams) ([]ChannelModelHealthView, int64, error) {
 	if DB == nil {
 		return []ChannelModelHealthView{}, 0, nil
@@ -676,6 +792,17 @@ func ListChannelModelHealth(params ChannelModelHealthListParams) ([]ChannelModel
 }
 
 func GetChannelModelHealthSummary() ([]ChannelModelHealthSummaryItem, error) {
+	return getChannelModelHealthSummary(nil, false)
+}
+
+// GetChannelModelHealthSummaryForChannels returns summaries for only the
+// requested channels. The channel list uses this to avoid returning model
+// details for channels outside the current page.
+func GetChannelModelHealthSummaryForChannels(channelIDs []int, includeModels bool) ([]ChannelModelHealthSummaryItem, error) {
+	return getChannelModelHealthSummary(channelIDs, includeModels)
+}
+
+func getChannelModelHealthSummary(channelIDs []int, includeModels bool) ([]ChannelModelHealthSummaryItem, error) {
 	if DB == nil {
 		return []ChannelModelHealthSummaryItem{}, nil
 	}
@@ -683,6 +810,7 @@ func GetChannelModelHealthSummary() ([]ChannelModelHealthSummaryItem, error) {
 	if err != nil {
 		return nil, err
 	}
+	views = filterChannelModelHealthViewsByChannelIDs(views, channelIDs)
 	byChannel := make(map[int]*ChannelModelHealthSummaryItem, len(views))
 	now := common.GetTimestamp()
 	for _, view := range views {
@@ -728,6 +856,15 @@ func GetChannelModelHealthSummary() ([]ChannelModelHealthSummaryItem, error) {
 				LastError:      view.LastError,
 			})
 		}
+		if includeModels {
+			item.Models = append(item.Models, ChannelModelHealthSummaryModel{
+				Group:              view.Group,
+				Model:              view.Model,
+				State:              state,
+				Ready:              state == ChannelModelHealthOpen && view.CooldownUntil <= now,
+				HealthRecordExists: view.HealthRecordExists,
+			})
+		}
 	}
 	issueKeys := make([]channelModelHealthKey, 0)
 	for _, item := range byChannel {
@@ -754,6 +891,14 @@ func GetChannelModelHealthSummary() ([]ChannelModelHealthSummaryItem, error) {
 	}
 	items := make([]ChannelModelHealthSummaryItem, 0, len(byChannel))
 	for _, item := range byChannel {
+		if includeModels {
+			sort.SliceStable(item.Models, func(i, j int) bool {
+				if item.Models[i].Group != item.Models[j].Group {
+					return item.Models[i].Group < item.Models[j].Group
+				}
+				return item.Models[i].Model < item.Models[j].Model
+			})
+		}
 		sort.SliceStable(item.Issues, func(i, j int) bool {
 			if item.Issues[i].Ready != item.Issues[j].Ready {
 				return !item.Issues[i].Ready

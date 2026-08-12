@@ -47,6 +47,50 @@ type channelTestOptions struct {
 	group            string
 }
 
+func shouldObserveChannelModelTest(c *gin.Context, testModel string) bool {
+	if c == nil || c.Request == nil || strings.TrimSpace(testModel) == "" {
+		return false
+	}
+	observeHealth, err := strconv.ParseBool(c.Query("observe_health"))
+	return err == nil && observeHealth
+}
+
+func observeChannelModelTestResult(channel *model.Channel, testModel string, result testResult) {
+	if channel == nil {
+		return
+	}
+	testModel = strings.TrimSpace(testModel)
+	if testModel == "" {
+		return
+	}
+
+	groups, err := model.GetChannelModelHealthGroups(channel.Id, testModel)
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to get channel model health groups: channel_id=%d model=%s err=%v", channel.Id, testModel, err))
+		return
+	}
+	now := common.GetTimestamp()
+	if result.localErr == nil && result.newAPIError == nil {
+		for _, group := range groups {
+			model.ObserveChannelModelSuccess(channel.Id, group, testModel, now)
+		}
+		return
+	}
+	if !model.ShouldObserveChannelModelFailure(result.newAPIError) {
+		return
+	}
+	for _, group := range groups {
+		model.ObserveChannelModelFailure(
+			channel.Id,
+			group,
+			testModel,
+			result.newAPIError,
+			now,
+			model.GetChannelModelHealthConfig(),
+		)
+	}
+}
+
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
@@ -863,6 +907,7 @@ func TestChannel(c *gin.Context) {
 	testModel := c.Query("model")
 	endpointType := c.Query("endpoint_type")
 	isStream, _ := strconv.ParseBool(c.Query("stream"))
+	observeHealth := shouldObserveChannelModelTest(c, testModel)
 	testUserID, err := resolveChannelTestUserID(c)
 	if err != nil {
 		common.ApiError(c, err)
@@ -874,6 +919,9 @@ func TestChannel(c *gin.Context) {
 		requestCtx = c.Request.Context()
 	}
 	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
+	if observeHealth {
+		observeChannelModelTestResult(channel, testModel, result)
+	}
 	if result.localErr != nil {
 		resp := gin.H{
 			"success": false,

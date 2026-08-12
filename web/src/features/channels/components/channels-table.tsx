@@ -215,23 +215,6 @@ export function ChannelsTable() {
     queryFn: getGroups,
   })
 
-  const { data: healthSummaryData } = useQuery({
-    queryKey: ['channel-model-health-summary'],
-    queryFn: getChannelHealthSummary,
-    refetchInterval: 30_000,
-  })
-
-  const healthSummaryByChannel = useMemo(
-    () =>
-      Object.fromEntries(
-        (healthSummaryData?.data ?? []).map((summary) => [
-          summary.channel_id,
-          summary,
-        ])
-      ),
-    [healthSummaryData]
-  )
-
   const { data: activitySummaryData } = useQuery({
     queryKey: ['channel-activity-summary'],
     queryFn: getChannelActivitySummary,
@@ -343,6 +326,28 @@ export function ChannelsTable() {
 
   const totalCount = data?.data?.total || 0
   const typeCounts = data?.data?.type_counts
+  const channelIDs = useMemo(
+    () => (data?.data?.items ?? []).map((channel) => channel.id),
+    [data]
+  )
+
+  const { data: healthSummaryData } = useQuery({
+    queryKey: ['channel-model-health-summary', channelIDs],
+    queryFn: () => getChannelHealthSummary(channelIDs),
+    enabled: channelIDs.length > 0,
+    refetchInterval: 30_000,
+  })
+
+  const healthSummaryByChannel = useMemo(
+    () =>
+      Object.fromEntries(
+        (healthSummaryData?.data ?? []).map((summary) => [
+          summary.channel_id,
+          summary,
+        ])
+      ),
+    [healthSummaryData]
+  )
 
   // Columns configuration
   const columns = useChannelsColumns({

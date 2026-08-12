@@ -140,11 +140,16 @@ export async function getChannelModelHealth(
   return res.data
 }
 
-export async function getChannelHealthSummary(): Promise<{
+export async function getChannelHealthSummary(channelIds?: number[]): Promise<{
   success: boolean
   data?: ChannelModelHealthSummary[]
 }> {
-  const res = await api.get('/api/channel/health/summary')
+  const res = await api.get('/api/channel/health/summary', {
+    params:
+      channelIds && channelIds.length > 0
+        ? { channel_ids: channelIds.join(',') }
+        : undefined,
+  })
   return res.data
 }
 
@@ -165,6 +170,38 @@ export async function resetChannelModelHealth(
 ): Promise<{ success: boolean; message?: string }> {
   const res = await api.post(
     '/api/channel/health/reset',
+    params,
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function openChannelModelHealth(params: {
+  channel_id: number
+  model: string
+}): Promise<{
+  success: boolean
+  message?: string
+  data?: { updated: number }
+}> {
+  const res = await api.post(
+    '/api/channel/health/open',
+    params,
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function recoverChannelModelHealth(params: {
+  channel_id: number
+  model: string
+}): Promise<{
+  success: boolean
+  message?: string
+  data?: { updated: number }
+}> {
+  const res = await api.post(
+    '/api/channel/health/recover',
     params,
     channelActionConfig()
   )
@@ -289,7 +326,12 @@ export async function batchSetChannelTag(
  */
 export async function testChannel(
   id: number,
-  params?: { model?: string; endpoint_type?: string; stream?: boolean }
+  params?: {
+    model?: string
+    endpoint_type?: string
+    stream?: boolean
+    observe_health?: boolean
+  }
 ): Promise<ChannelTestResponse> {
   const res = await api.get(
     `/api/channel/test/${id}`,

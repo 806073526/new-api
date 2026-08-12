@@ -185,4 +185,65 @@ describe('channel model health display state', () => {
       ['recovered-model']
     )
   })
+
+  test('groups every model by state and group for the channel list', () => {
+    const groupSummaryModels = Reflect.get(
+      channelModelHealth,
+      'groupChannelModelHealthSummaryModels'
+    )
+    assert.equal(typeof groupSummaryModels, 'function')
+    assert.deepEqual(
+      groupSummaryModels([
+        {
+          group: 'A',
+          model: 'gpt-5.6-sol',
+          state: 'closed',
+          ready: false,
+          health_record_exists: false,
+        },
+        {
+          group: 'A',
+          model: 'gpt-5.5',
+          state: 'open',
+          ready: false,
+          health_record_exists: true,
+        },
+        {
+          group: 'A',
+          model: 'gpt-5.4',
+          state: 'open',
+          ready: false,
+          health_record_exists: true,
+        },
+        {
+          group: 'B',
+          model: 'gpt-5.6-sol',
+          state: 'open',
+          ready: false,
+          health_record_exists: true,
+        },
+        {
+          group: 'B',
+          model: 'gpt-5.6-luna',
+          state: 'suspect',
+          ready: false,
+          health_record_exists: true,
+        },
+        {
+          group: 'C',
+          model: 'gpt-4.1',
+          state: 'closed',
+          ready: false,
+          health_record_exists: true,
+        },
+      ]),
+      [
+        { state: 'healthy', group: 'A', models: ['gpt-5.6-sol'] },
+        { state: 'suspect', group: 'B', models: ['gpt-5.6-luna'] },
+        { state: 'recovered', group: 'C', models: ['gpt-4.1'] },
+        { state: 'open', group: 'A', models: ['gpt-5.4', 'gpt-5.5'] },
+        { state: 'open', group: 'B', models: ['gpt-5.6-sol'] },
+      ]
+    )
+  })
 })

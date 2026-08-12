@@ -86,14 +86,16 @@ import {
   formatChannelActivityIdentity,
   getTopChannelActivityDetails,
 } from '../lib/channel-activity'
+import {
+  getChannelModelHealthPresentationLabelKey,
+  groupChannelModelHealthSummaryModels,
+} from '../lib/channel-model-health'
 import { parseUpstreamUpdateMeta } from '../lib/upstream-update-utils'
 import type {
   Channel,
   ChannelActivitySummary,
   ChannelModelHealthSummary,
 } from '../types'
-import { ChannelModelHealthClosedDetailsPopover } from './channel-model-health-closed-details-popover'
-import { ChannelModelHealthLastRequest } from './channel-model-health-last-request'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
 import { useChannels } from './channels-provider'
 import { DataTableRowActions } from './data-table-row-actions'
@@ -1072,125 +1074,50 @@ export function useChannelsColumns(
           if (!summary) {
             return <span className='text-muted-foreground'>-</span>
           }
-          const ready = summary.ready ?? 0
-          const healthy = summary.healthy ?? 0
-          const recovered = summary.closed ?? 0
-          const active =
-            summary.open + ready + summary.half_open + summary.suspect
-          if (active === 0 && healthy === 0 && recovered === 0) {
-            return <Badge variant='outline'>{t('Healthy')}</Badge>
-          }
-          const issues = summary.issues ?? []
-          const stateLabel = (issue: (typeof issues)[number]) => {
-            const state = issue.ready ? 'ready' : issue.state
-            if (state === 'open') return t('Circuit open')
-            if (state === 'ready') return t('Waiting for probe')
-            if (state === 'half_open') return t('Probing')
-            return t('Suspect')
-          }
-          const issueBadges = (
-            <>
-              {summary.open > 0 && (
-                <Badge variant='destructive'>
-                  {t('Circuit open')} {summary.open}
-                </Badge>
-              )}
-              {ready > 0 && (
-                <Badge
-                  variant='outline'
-                  className='border-sky-500/50 text-sky-700 dark:text-sky-300'
-                >
-                  {t('Waiting for probe')} {ready}
-                </Badge>
-              )}
-              {summary.half_open > 0 && (
-                <Badge variant='secondary'>
-                  {t('Probing')} {summary.half_open}
-                </Badge>
-              )}
-              {summary.suspect > 0 && (
-                <Badge
-                  variant='outline'
-                  className='border-amber-500/50 text-amber-700 dark:text-amber-300'
-                >
-                  {t('Suspect')} {summary.suspect}
-                </Badge>
-              )}
-            </>
+          const groups = groupChannelModelHealthSummaryModels(
+            summary.models ?? []
           )
-          const issueContent =
-            issues.length === 0 ? (
-              <div className='flex min-w-0 flex-wrap gap-1'>{issueBadges}</div>
-            ) : (
-              <Popover>
-                <PopoverTrigger
-                  render={
-                    <button
-                      type='button'
-                      className='focus-visible:ring-ring inline-flex min-w-0 cursor-pointer rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none'
-                      aria-label={t('Model health')}
-                    />
-                  }
-                >
-                  <span className='inline-flex min-w-0 flex-wrap gap-1'>
-                    {issueBadges}
-                  </span>
-                </PopoverTrigger>
-                <PopoverContent className='max-h-96 w-[34rem] max-w-[calc(100vw-2rem)] overflow-auto'>
-                  <div className='space-y-3'>
-                    {issues.map((issue) => (
-                      <div
-                        key={`${issue.group}:${issue.model}`}
-                        className='border-border/60 border-b pb-3 text-xs last:border-b-0 last:pb-0'
-                      >
-                        <div className='font-mono'>{issue.model}</div>
-                        <div className='text-muted-foreground'>
-                          {issue.group} · {stateLabel(issue)}
-                          {issue.last_status_code > 0
-                            ? ` · ${issue.last_status_code}`
-                            : ''}
-                        </div>
-                        {(issue.last_error_code || issue.last_error) && (
-                          <div className='text-muted-foreground max-w-80 truncate'>
-                            {issue.last_error_code || issue.last_error}
-                          </div>
-                        )}
-                        <ChannelModelHealthLastRequest item={issue} />
-                      </div>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
+          if (groups.length === 0) {
+            return <span className='text-muted-foreground'>-</span>
+          }
+          const healthSections: Array<{
+            state: (typeof groups)[number]['state']
+            items: Array<(typeof groups)[number]>
+          }> = []
+          for (const item of groups) {
+            const section = healthSections.find(
+              (value) => value.state === item.state
             )
+            if (section) {
+              section.items.push(item)
+              continue
+            }
+            healthSections.push({ state: item.state, items: [item] })
+          }
           return (
-            <div className='flex min-w-0 flex-col gap-1'>
-              {(healthy > 0 || recovered > 0) && (
-                <div className='flex min-w-0 flex-wrap gap-1'>
-                  {healthy > 0 && (
-                    <ChannelModelHealthClosedDetailsPopover
-                      channelId={row.original.id}
-                      count={healthy}
-                      state='healthy'
-                    />
-                  )}
-                  {recovered > 0 && (
-                    <ChannelModelHealthClosedDetailsPopover
-                      channelId={row.original.id}
-                      count={recovered}
-                      state='recovered'
-                    />
-                  )}
+            <div className='min-w-80 space-y-2 py-1 text-xs'>
+              {healthSections.map((section) => (
+                <div key={section.state}>
+                  <div className='font-medium'>
+                    {t(
+                      getChannelModelHealthPresentationLabelKey(section.state)
+                    )}
+                    :
+                  </div>
+                  {section.items.map((item) => (
+                    <div key={item.group} className='pl-2'>
+                      {item.group}:{' '}
+                      <span className='font-mono'>
+                        {item.models.join('、')}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              )}
-              {active > 0 && (
-                <div className='flex min-w-0 flex-wrap gap-1'>
-                  {issueContent}
-                </div>
-              )}
+              ))}
             </div>
           )
         },
-        size: 170,
+        size: 300,
         enableSorting: false,
       },
 
@@ -1239,8 +1166,8 @@ export function useChannelsColumns(
           const models = row.getValue('models') as string
           const modelArray = parseModelsList(models)
           return (
-            <BadgeListCell
-              items={modelArray.map((model) => (
+            <div className='flex min-w-48 flex-wrap gap-1'>
+              {modelArray.map((model) => (
                 <StatusBadge
                   key={model}
                   label={model}
@@ -1249,7 +1176,7 @@ export function useChannelsColumns(
                   className='font-mono'
                 />
               ))}
-            />
+            </div>
           )
         },
         size: 200,

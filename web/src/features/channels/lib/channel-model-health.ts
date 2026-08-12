@@ -16,7 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ChannelModelHealth, ChannelModelHealthState } from '../types.ts'
+import type {
+  ChannelModelHealth,
+  ChannelModelHealthState,
+  ChannelModelHealthSummaryModel,
+} from '../types.ts'
 
 export type ChannelModelHealthDisplayState = ChannelModelHealthState | 'ready'
 
@@ -47,6 +51,107 @@ export function getChannelModelHealthClosedItems(
       item.state === 'closed' &&
       getChannelModelHealthClosedDisplayState(item) === closedState
   )
+}
+
+export type ChannelModelHealthPresentationState =
+  | 'healthy'
+  | 'recovered'
+  | 'suspect'
+  | 'open'
+  | 'ready'
+  | 'half_open'
+
+export function getChannelModelHealthPresentationState(
+  item: ChannelModelHealth,
+  now: number
+): ChannelModelHealthPresentationState {
+  const state = getChannelModelHealthDisplayState(item, now)
+  if (state !== 'closed') {
+    return state
+  }
+  return getChannelModelHealthClosedDisplayState(item)
+}
+
+export function getChannelModelHealthPresentationLabelKey(
+  state: ChannelModelHealthPresentationState
+): string {
+  switch (state) {
+    case 'healthy':
+      return 'Healthy'
+    case 'recovered':
+      return 'Recovered'
+    case 'suspect':
+      return 'Suspect'
+    case 'open':
+      return 'Circuit open'
+    case 'ready':
+      return 'Waiting for probe'
+    case 'half_open':
+      return 'Probing'
+  }
+}
+
+type ChannelModelHealthSummaryGroup = {
+  state: ChannelModelHealthPresentationState
+  group: string
+  models: string[]
+}
+
+const channelModelHealthPresentationOrder: Record<
+  ChannelModelHealthPresentationState,
+  number
+> = {
+  healthy: 0,
+  suspect: 1,
+  recovered: 2,
+  open: 3,
+  ready: 4,
+  half_open: 5,
+}
+
+function getChannelModelHealthSummaryPresentationState(
+  item: ChannelModelHealthSummaryModel
+): ChannelModelHealthPresentationState {
+  if (item.state === 'closed') {
+    return getChannelModelHealthClosedDisplayState(item)
+  }
+  if (item.state === 'open' && item.ready) {
+    return 'ready'
+  }
+  return item.state
+}
+
+export function groupChannelModelHealthSummaryModels(
+  items: ChannelModelHealthSummaryModel[]
+): ChannelModelHealthSummaryGroup[] {
+  const grouped = new Map<string, ChannelModelHealthSummaryGroup>()
+  for (const item of items) {
+    const state = getChannelModelHealthSummaryPresentationState(item)
+    const key = `${state}\u0000${item.group}`
+    const existing = grouped.get(key)
+    if (existing) {
+      existing.models.push(item.model)
+      continue
+    }
+    grouped.set(key, {
+      state,
+      group: item.group,
+      models: [item.model],
+    })
+  }
+
+  return [...grouped.values()]
+    .map((item) => ({
+      ...item,
+      models: [...new Set(item.models)].sort(),
+    }))
+    .sort((left, right) => {
+      const stateOrder =
+        channelModelHealthPresentationOrder[left.state] -
+        channelModelHealthPresentationOrder[right.state]
+      if (stateOrder !== 0) return stateOrder
+      return left.group.localeCompare(right.group)
+    })
 }
 
 export function getChannelModelHealthIssueLabels(

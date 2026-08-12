@@ -141,7 +141,7 @@ export function ChannelModelHealthTable() {
 
   const summaryQuery = useQuery({
     queryKey: ['channel-model-health-summary'],
-    queryFn: getChannelHealthSummary,
+    queryFn: () => getChannelHealthSummary(),
     refetchInterval: 15_000,
   })
 

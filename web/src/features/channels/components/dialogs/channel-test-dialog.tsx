@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   ColumnDef,
   RowSelectionState,
@@ -26,9 +26,11 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  CircleOff,
   Gauge,
   Info,
   Loader2,
+  RotateCcw,
   Settings,
   Trash2,
 } from 'lucide-react'
@@ -87,14 +89,24 @@ import {
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useIsMobile } from '@/hooks/use-mobile'
 
-import { updateChannel } from '../../api'
+import {
+  getChannelHealthSummary,
+  openChannelModelHealth,
+  recoverChannelModelHealth,
+  updateChannel,
+} from '../../api'
 import {
   channelsQueryKeys,
   formatResponseTime,
   handleTestChannel,
 } from '../../lib'
+import {
+  getChannelModelHealthPresentationLabelKey,
+  groupChannelModelHealthSummaryModels,
+} from '../../lib/channel-model-health'
 import type {
   Channel,
+  ChannelModelHealthSummary,
   GetChannelsResponse,
   SearchChannelsResponse,
 } from '../../types'
@@ -112,6 +124,8 @@ type ChannelTestDialogContentProps = ChannelTestDialogProps & {
 type ModelRow = {
   model: string
 }
+
+type ModelHealthAction = 'open' | 'recover'
 
 type TestStatus = 'idle' | 'testing' | 'success' | 'error'
 
@@ -293,6 +307,8 @@ function getTestTableColumnClass(columnId: string) {
       return 'w-28 min-w-28 whitespace-nowrap'
     case 'result':
       return 'w-80 min-w-80 max-w-80 whitespace-normal'
+    case 'model_health':
+      return 'w-52 min-w-52 whitespace-normal'
     case 'actions':
       return 'bg-popover w-px whitespace-nowrap'
     default:
@@ -351,6 +367,11 @@ function ChannelTestDialogContent({
   const [isDeletingFailed, setIsDeletingFailed] = useState(false)
   const [failureDetails, setFailureDetails] =
     useState<FailureDetailsState | null>(null)
+  const [modelHealthAction, setModelHealthAction] = useState<{
+    model: string
+    action: ModelHealthAction
+  } | null>(null)
+  const [isUpdatingModelHealth, setIsUpdatingModelHealth] = useState(false)
   const [pagination, setPagination] = useState({
     pageIndex: 0,
     pageSize: 30,
@@ -412,6 +433,8 @@ function ChannelTestDialogContent({
     setIsDeleteFailedDialogOpen(false)
     setIsDeletingFailed(false)
     setFailureDetails(null)
+    setModelHealthAction(null)
+    setIsUpdatingModelHealth(false)
     setPagination({ pageIndex: 0, pageSize: 30 })
   }, [])
 
@@ -452,6 +475,72 @@ function ChannelTestDialogContent({
     () => baseModels.filter((model) => !removedModels.has(model)),
     [baseModels, removedModels]
   )
+
+  const modelHealthQuery = useQuery({
+    queryKey: ['channel-model-health-summary', currentChannelId],
+    queryFn: () => getChannelHealthSummary([currentChannelId]),
+    enabled: open,
+    refetchInterval: 15_000,
+  })
+  const healthSummary = modelHealthQuery.data?.data?.find(
+    (item) => item.channel_id === currentChannelId
+  )
+  const modelHealthByModel = useMemo(() => {
+    const healthByModel = new Map<
+      string,
+      NonNullable<ChannelModelHealthSummary['models']>
+    >()
+    for (const item of healthSummary?.models ?? []) {
+      const entries = healthByModel.get(item.model) ?? []
+      entries.push(item)
+      healthByModel.set(item.model, entries)
+    }
+    return healthByModel
+  }, [healthSummary])
+
+  const runModelHealthAction = useCallback(async () => {
+    if (!modelHealthAction) return
+    setIsUpdatingModelHealth(true)
+    try {
+      const action =
+        modelHealthAction.action === 'open'
+          ? openChannelModelHealth
+          : recoverChannelModelHealth
+      const response = await action({
+        channel_id: currentChannelId,
+        model: modelHealthAction.model,
+      })
+      if (!response.success) {
+        toast.error(response.message || t('Failed to update model health'))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: ['channel-model-health-summary', currentChannelId],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['channel-model-health-summary'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['channel-model-health'],
+      })
+      toast.success(
+        t(
+          modelHealthAction.action === 'open'
+            ? 'Model health circuit opened'
+            : 'Model health recovered'
+        )
+      )
+      setModelHealthAction(null)
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to update model health')
+      )
+    } finally {
+      setIsUpdatingModelHealth(false)
+    }
+  }, [currentChannelId, modelHealthAction, queryClient, t])
 
   const successModels = useMemo(
     () => models.filter((model) => testResults[model]?.status === 'success'),
@@ -562,6 +651,7 @@ function ChannelTestDialogContent({
             testModel: model,
             endpointType: endpointType === 'auto' ? undefined : endpointType,
             stream: effectiveStreamTest || undefined,
+            observeHealth: true,
             silent,
           },
           (success, responseTime, error, errorCode) => {
@@ -916,6 +1006,29 @@ function ChannelTestDialogContent({
         size: 320,
       },
       {
+        id: 'model_health',
+        header: t('Model health'),
+        cell: ({ row }) => {
+          const entries = modelHealthByModel.get(row.original.model) ?? []
+          const groups = groupChannelModelHealthSummaryModels(entries)
+          if (groups.length === 0) {
+            return <span className='text-muted-foreground text-sm'>-</span>
+          }
+          return (
+            <div className='space-y-0.5 text-xs'>
+              {groups.map((item) => (
+                <div key={`${item.state}:${item.group}`}>
+                  {item.group} {t('Group')}:{' '}
+                  {t(getChannelModelHealthPresentationLabelKey(item.state))}
+                </div>
+              ))}
+            </div>
+          )
+        },
+        enableSorting: false,
+        size: 208,
+      },
+      {
         id: 'actions',
         header: t('Actions'),
         cell: ({ row }) => {
@@ -923,26 +1036,72 @@ function ChannelTestDialogContent({
           const isTestingModel = testingModels.has(model)
 
           return (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant='ghost'
-                    size='icon-sm'
-                    onClick={() => testSingleModel(model)}
-                    disabled={isTestingModel || isBatchTesting}
-                    aria-label={t('Test Connection')}
-                  />
-                }
-              >
-                {isTestingModel ? (
-                  <Loader2 className='size-4 animate-spin' />
-                ) : (
-                  <Gauge className='size-4' />
-                )}
-              </TooltipTrigger>
-              <TooltipContent>{t('Test Connection')}</TooltipContent>
-            </Tooltip>
+            <div className='flex items-center gap-1'>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant='ghost'
+                      size='icon-sm'
+                      onClick={() => testSingleModel(model)}
+                      disabled={isTestingModel || isBatchTesting}
+                      aria-label={t('Test Connection')}
+                    />
+                  }
+                >
+                  {isTestingModel ? (
+                    <Loader2 className='size-4 animate-spin' />
+                  ) : (
+                    <Gauge className='size-4' />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>{t('Test Connection')}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant='ghost'
+                      size='icon-sm'
+                      onClick={() =>
+                        setModelHealthAction({ model, action: 'open' })
+                      }
+                      disabled={
+                        isTestingModel ||
+                        isBatchTesting ||
+                        isUpdatingModelHealth
+                      }
+                      aria-label={t('Open circuit')}
+                    />
+                  }
+                >
+                  <CircleOff className='size-4' />
+                </TooltipTrigger>
+                <TooltipContent>{t('Open circuit')}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant='ghost'
+                      size='icon-sm'
+                      onClick={() =>
+                        setModelHealthAction({ model, action: 'recover' })
+                      }
+                      disabled={
+                        isTestingModel ||
+                        isBatchTesting ||
+                        isUpdatingModelHealth
+                      }
+                      aria-label={t('Recover')}
+                    />
+                  }
+                >
+                  <RotateCcw className='size-4' />
+                </TooltipTrigger>
+                <TooltipContent>{t('Recover')}</TooltipContent>
+              </Tooltip>
+            </div>
           )
         },
         enableSorting: false,
@@ -951,6 +1110,9 @@ function ChannelTestDialogContent({
     [
       defaultTestModel,
       isBatchTesting,
+      isUpdatingModelHealth,
+      modelHealthByModel,
+      setModelHealthAction,
       t,
       testResults,
       testingModels,
@@ -983,7 +1145,7 @@ function ChannelTestDialogContent({
             <span className='min-w-0 truncate'>{currentRow.name}</span>
           </span>
         }
-        contentClassName='max-h-[90vh] overflow-hidden sm:max-w-4xl'
+        contentClassName='max-h-[90vh] overflow-hidden sm:max-w-6xl'
         contentHeight='auto'
         bodyClassName='space-y-4'
         footer={
@@ -1140,6 +1302,7 @@ function ChannelTestDialogContent({
                     <col className='w-auto' />
                     <col className='w-28' />
                     <col className='w-80' />
+                    <col className='w-52' />
                     <col className='w-px' />
                   </colgroup>
                 }
@@ -1173,6 +1336,39 @@ function ChannelTestDialogContent({
         isLoading={isDeletingFailed}
         confirmText={t('Delete')}
         handleConfirm={handleDeleteFailedModels}
+      />
+      <ConfirmDialog
+        open={modelHealthAction !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setModelHealthAction(null)
+          }
+        }}
+        title={
+          modelHealthAction?.action === 'open'
+            ? t('Open circuit')
+            : t('Recover')
+        }
+        desc={
+          modelHealthAction?.action === 'open'
+            ? t(
+                'Open the circuit for {{model}} in every group of this channel?',
+                {
+                  model: modelHealthAction?.model ?? '',
+                }
+              )
+            : t('Recover {{model}} in every group of this channel?', {
+                model: modelHealthAction?.model ?? '',
+              })
+        }
+        destructive={modelHealthAction?.action === 'open'}
+        isLoading={isUpdatingModelHealth}
+        confirmText={
+          modelHealthAction?.action === 'open'
+            ? t('Open circuit')
+            : t('Recover')
+        }
+        handleConfirm={runModelHealthAction}
       />
       <FailureDetailsSheet
         details={failureDetails}

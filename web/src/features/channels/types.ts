@@ -121,6 +121,15 @@ export type ChannelModelHealthSummary = {
   half_open: number
   closed: number
   issues?: ChannelModelHealthSummaryIssue[]
+  models?: ChannelModelHealthSummaryModel[]
+}
+
+export type ChannelModelHealthSummaryModel = {
+  group: string
+  model: string
+  state: ChannelModelHealthState
+  ready: boolean
+  health_record_exists: boolean
 }
 
 export type ChannelModelHealthSummaryIssue = {

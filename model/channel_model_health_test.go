@@ -192,6 +192,69 @@ func TestChannelModelHealthSuccessClosesHalfOpenState(t *testing.T) {
 	assert.Zero(t, health.HalfOpenLeaseUntil)
 }
 
+func TestOpenChannelModelHealthOpensEveryConfiguredGroup(t *testing.T) {
+	truncateTables(t)
+	setting := operation_setting.GetChannelModelHealthSetting()
+	previous := *setting
+	setting.Enabled = true
+	setting.ExcludedChannelIds = nil
+	setting.ExcludedModels = nil
+	setting.CooldownSeconds = 60
+	setting.MaxCooldownSeconds = 1800
+	t.Cleanup(func() { *setting = previous })
+
+	require.NoError(t, DB.Create(&Channel{Id: 41, Name: "provider", Status: common.ChannelStatusEnabled}).Error)
+	require.NoError(t, DB.Create(&[]Ability{
+		{ChannelId: 41, Group: "alpha", Model: "gpt-test", Enabled: true},
+		{ChannelId: 41, Group: "beta", Model: "gpt-test", Enabled: true},
+		{ChannelId: 41, Group: "alpha", Model: "other-model", Enabled: true},
+	}).Error)
+
+	updated, err := OpenChannelModelHealth(41, "gpt-test", 100)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, updated)
+	for _, group := range []string{"alpha", "beta"} {
+		health := GetChannelModelHealth(41, group, "gpt-test")
+		assert.Equal(t, ChannelModelHealthOpen, health.State)
+		assert.Equal(t, int64(160), health.CooldownUntil)
+	}
+	assert.Equal(t, ChannelModelHealthClosed, GetChannelModelHealth(41, "alpha", "other-model").State)
+}
+
+func TestRecoverChannelModelHealthUsesSuccessTransitionForEveryConfiguredGroup(t *testing.T) {
+	truncateTables(t)
+	setting := operation_setting.GetChannelModelHealthSetting()
+	previous := *setting
+	setting.Enabled = true
+	setting.ExcludedChannelIds = nil
+	setting.ExcludedModels = nil
+	t.Cleanup(func() { *setting = previous })
+
+	require.NoError(t, DB.Create(&Channel{Id: 42, Name: "provider", Status: common.ChannelStatusEnabled}).Error)
+	require.NoError(t, DB.Create(&[]Ability{
+		{ChannelId: 42, Group: "alpha", Model: "gpt-test", Enabled: true},
+		{ChannelId: 42, Group: "beta", Model: "gpt-test", Enabled: true},
+	}).Error)
+	require.NoError(t, DB.Create(&[]ChannelModelHealth{
+		{ChannelId: 42, Group: "alpha", Model: "gpt-test", State: ChannelModelHealthOpen, FailureCount: 3, CooldownUntil: 200},
+		{ChannelId: 42, Group: "beta", Model: "gpt-test", State: ChannelModelHealthSuspect, FailureCount: 1},
+	}).Error)
+	InitChannelModelHealthCache()
+
+	updated, err := RecoverChannelModelHealth(42, "gpt-test", 300)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, updated)
+	for _, group := range []string{"alpha", "beta"} {
+		health := GetChannelModelHealth(42, group, "gpt-test")
+		assert.Equal(t, ChannelModelHealthClosed, health.State)
+		assert.Zero(t, health.FailureCount)
+		assert.Equal(t, int64(300), health.LastSuccessAt)
+		assert.Zero(t, health.CooldownUntil)
+	}
+}
+
 func TestChannelModelHealthGroupUsesBoundedIndexedString(t *testing.T) {
 	field, ok := reflect.TypeOf(ChannelModelHealth{}).FieldByName("Group")
 	require.True(t, ok)
@@ -377,6 +440,27 @@ func TestGetChannelModelHealthSummarySeparatesWaitingProbeFromActiveCircuit(t *t
 	require.Len(t, summary, 1)
 	assert.Equal(t, int64(1), summary[0].Open)
 	assert.Equal(t, int64(1), summary[0].Ready)
+	assert.Empty(t, summary[0].Models)
+}
+
+func TestGetChannelModelHealthSummaryForChannelsLimitsModelsToRequestedChannels(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Create(&[]Channel{
+		{Id: 21, Name: "first", Status: common.ChannelStatusEnabled},
+		{Id: 22, Name: "second", Status: common.ChannelStatusEnabled},
+	}).Error)
+	require.NoError(t, DB.Create(&[]Ability{
+		{ChannelId: 21, Group: "alpha", Model: "gpt-first", Enabled: true},
+		{ChannelId: 22, Group: "beta", Model: "gpt-second", Enabled: true},
+	}).Error)
+
+	summary, err := GetChannelModelHealthSummaryForChannels([]int{22}, true)
+
+	require.NoError(t, err)
+	require.Len(t, summary, 1)
+	assert.Equal(t, 22, summary[0].ChannelId)
+	require.Len(t, summary[0].Models, 1)
+	assert.Equal(t, "gpt-second", summary[0].Models[0].Model)
 }
 
 func TestListChannelModelHealthProbeCandidatesReturnsOnlyDueItems(t *testing.T) {
@@ -481,7 +565,7 @@ func TestGetChannelModelHealthSummaryIncludesProblematicModels(t *testing.T) {
 		Type:      LogTypeError,
 	}).Error)
 
-	summary, err := GetChannelModelHealthSummary()
+	summary, err := GetChannelModelHealthSummaryForChannels([]int{11}, true)
 
 	require.NoError(t, err)
 	require.Len(t, summary, 1)
@@ -489,6 +573,16 @@ func TestGetChannelModelHealthSummaryIncludesProblematicModels(t *testing.T) {
 	assert.Equal(t, int64(1), summary[0].Healthy)
 	assert.Equal(t, int64(1), summary[0].Closed)
 	require.Len(t, summary[0].Issues, 2)
+	require.Len(t, summary[0].Models, 4)
+	modelsByName := make(map[string]ChannelModelHealthSummaryModel, len(summary[0].Models))
+	for _, item := range summary[0].Models {
+		modelsByName[item.Model] = item
+	}
+	assert.Equal(t, ChannelModelHealthClosed, modelsByName["healthy-model"].State)
+	assert.False(t, modelsByName["healthy-model"].HealthRecordExists)
+	assert.Equal(t, ChannelModelHealthOpen, modelsByName["gpt-5.6-luna"].State)
+	assert.Equal(t, ChannelModelHealthClosed, modelsByName["recovered-model"].State)
+	assert.True(t, modelsByName["recovered-model"].HealthRecordExists)
 	assert.Equal(t, "gpt-5.6-luna", summary[0].Issues[0].Model)
 	assert.Equal(t, "stable", summary[0].Issues[0].Group)
 	assert.Equal(t, ChannelModelHealthOpen, summary[0].Issues[0].State)

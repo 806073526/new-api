@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -62,12 +63,44 @@ func GetChannelHealth(c *gin.Context) {
 }
 
 func GetChannelModelHealthSummary(c *gin.Context) {
-	items, err := model.GetChannelModelHealthSummary()
+	channelIDs, err := parseChannelModelHealthSummaryChannelIDs(c.Query("channel_ids"))
+	if err != nil {
+		common.ApiErrorMsg(c, "invalid channel ids")
+		return
+	}
+	var items []model.ChannelModelHealthSummaryItem
+	if len(channelIDs) == 0 {
+		items, err = model.GetChannelModelHealthSummary()
+	} else {
+		items, err = model.GetChannelModelHealthSummaryForChannels(channelIDs, true)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	common.ApiSuccess(c, items)
+}
+
+func parseChannelModelHealthSummaryChannelIDs(value string) ([]int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value, ",")
+	channelIDs := make([]int, 0, len(parts))
+	seen := make(map[int]struct{}, len(parts))
+	for _, part := range parts {
+		channelID, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || channelID <= 0 {
+			return nil, errors.New("invalid channel id")
+		}
+		if _, exists := seen[channelID]; exists {
+			continue
+		}
+		seen[channelID] = struct{}{}
+		channelIDs = append(channelIDs, channelID)
+	}
+	return channelIDs, nil
 }
 
 func GetChannelActivitySummary(c *gin.Context) {
@@ -94,6 +127,51 @@ func ResetChannelModelHealth(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{"reset": true})
+}
+
+type channelModelHealthActionRequest struct {
+	ChannelId int    `json:"channel_id"`
+	Model     string `json:"model"`
+}
+
+func OpenChannelModelHealth(c *gin.Context) {
+	request, ok := bindChannelModelHealthActionRequest(c)
+	if !ok {
+		return
+	}
+	updated, err := model.OpenChannelModelHealth(request.ChannelId, request.Model, common.GetTimestamp())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"updated": updated})
+}
+
+func RecoverChannelModelHealth(c *gin.Context) {
+	request, ok := bindChannelModelHealthActionRequest(c)
+	if !ok {
+		return
+	}
+	updated, err := model.RecoverChannelModelHealth(request.ChannelId, request.Model, common.GetTimestamp())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"updated": updated})
+}
+
+func bindChannelModelHealthActionRequest(c *gin.Context) (channelModelHealthActionRequest, bool) {
+	var request channelModelHealthActionRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.ApiError(c, err)
+		return channelModelHealthActionRequest{}, false
+	}
+	request.Model = strings.TrimSpace(request.Model)
+	if request.ChannelId <= 0 || request.Model == "" {
+		common.ApiErrorMsg(c, "invalid channel model health request")
+		return channelModelHealthActionRequest{}, false
+	}
+	return request, true
 }
 
 func normalizeChannelModelHealthListParams(params *model.ChannelModelHealthListParams) {
