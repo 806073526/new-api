@@ -128,6 +128,7 @@ func GetChannel(group string, model string, retry int, requestPath string) (*Cha
 			channelIDs = append(channelIDs, ability.ChannelId)
 		}
 		allowedIDs := make(map[int]struct{}, len(channelIDs))
+		channelIDs = filterChannelModelManualDisableCandidates(channelIDs, group, model)
 		for _, channelID := range filterChannelModelHealthCandidates(channelIDs, group, model, common.GetTimestamp()) {
 			allowedIDs[channelID] = struct{}{}
 		}

@@ -208,6 +208,31 @@ export async function recoverChannelModelHealth(params: {
   return res.data
 }
 
+export async function disableChannelModelManually(params: {
+  channel_id: number
+  model: string
+  reason?: string
+}): Promise<{ success: boolean; message?: string }> {
+  const res = await api.post(
+    '/api/channel/health/manual-disable',
+    params,
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function recoverChannelModelManuallyDisabled(params: {
+  channel_id: number
+  model: string
+}): Promise<{ success: boolean; message?: string }> {
+  const res = await api.post(
+    '/api/channel/health/manual-recover',
+    params,
+    channelActionConfig()
+  )
+  return res.data
+}
+
 /**
  * Create new channel(s)
  * Supports single, batch, and multi-key modes

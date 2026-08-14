@@ -26,6 +26,8 @@ func TestChannelModelHealthRoutesUseChannelPermissions(t *testing.T) {
 	assertChannelRoutePermission(t, http.MethodPost, "/health/reset", authz.ChannelOperate, controller.ResetChannelModelHealth)
 	assertChannelRoutePermission(t, http.MethodPost, "/health/open", authz.ChannelOperate, controller.OpenChannelModelHealth)
 	assertChannelRoutePermission(t, http.MethodPost, "/health/recover", authz.ChannelOperate, controller.RecoverChannelModelHealth)
+	assertChannelRoutePermission(t, http.MethodPost, "/health/manual-disable", authz.ChannelOperate, controller.DisableChannelModelManually)
+	assertChannelRoutePermission(t, http.MethodPost, "/health/manual-recover", authz.ChannelOperate, controller.RecoverChannelModelManuallyDisabled)
 }
 
 func TestChannelDeleteRoutesUseSensitiveWritePermission(t *testing.T) {

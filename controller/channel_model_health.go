@@ -160,6 +160,43 @@ func RecoverChannelModelHealth(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"updated": updated})
 }
 
+func DisableChannelModelManually(c *gin.Context) {
+	request, ok := bindChannelModelManualDisableRequest(c)
+	if !ok {
+		return
+	}
+	if err := model.DisableChannelModelManually(
+		request.ChannelId,
+		request.Model,
+		request.Reason,
+		c.GetInt("id"),
+		c.GetString("username"),
+		common.GetTimestamp(),
+	); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"disabled": true})
+}
+
+func RecoverChannelModelManuallyDisabled(c *gin.Context) {
+	request, ok := bindChannelModelHealthActionRequest(c)
+	if !ok {
+		return
+	}
+	if err := model.RecoverChannelModelManuallyDisabled(
+		request.ChannelId,
+		request.Model,
+		c.GetInt("id"),
+		c.GetString("username"),
+		common.GetTimestamp(),
+	); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"recovered": true})
+}
+
 func bindChannelModelHealthActionRequest(c *gin.Context) (channelModelHealthActionRequest, bool) {
 	var request channelModelHealthActionRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -170,6 +207,26 @@ func bindChannelModelHealthActionRequest(c *gin.Context) (channelModelHealthActi
 	if request.ChannelId <= 0 || request.Model == "" {
 		common.ApiErrorMsg(c, "invalid channel model health request")
 		return channelModelHealthActionRequest{}, false
+	}
+	return request, true
+}
+
+type channelModelManualDisableRequest struct {
+	channelModelHealthActionRequest
+	Reason string `json:"reason"`
+}
+
+func bindChannelModelManualDisableRequest(c *gin.Context) (channelModelManualDisableRequest, bool) {
+	var request channelModelManualDisableRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.ApiError(c, err)
+		return channelModelManualDisableRequest{}, false
+	}
+	request.Model = strings.TrimSpace(request.Model)
+	request.Reason = strings.TrimSpace(request.Reason)
+	if request.ChannelId <= 0 || request.Model == "" {
+		common.ApiErrorMsg(c, "invalid channel model manual disable request")
+		return channelModelManualDisableRequest{}, false
 	}
 	return request, true
 }

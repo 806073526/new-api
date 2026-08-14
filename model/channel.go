@@ -487,10 +487,15 @@ func BatchDeleteChannels(ids []int) (int64, error) {
 			tx.Rollback()
 			return 0, err
 		}
+		if err := tx.Where("channel_id in (?)", chunk).Delete(&ChannelModelManualDisable{}).Error; err != nil {
+			tx.Rollback()
+			return 0, err
+		}
 	}
 	if err := tx.Commit().Error; err != nil {
 		return 0, err
 	}
+	InitChannelModelManualDisableCache()
 	return deletedCount, nil
 }
 
@@ -623,6 +628,9 @@ func (channel *Channel) Delete() error {
 		return err
 	}
 	if err := DB.Where("channel_id = ?", channel.Id).Delete(&ChannelModelHealth{}).Error; err != nil {
+		return err
+	}
+	if err := DeleteChannelModelManualDisables([]int{channel.Id}); err != nil {
 		return err
 	}
 	return DeleteChannelUpstreamMetric(channel.Id)
@@ -901,6 +909,9 @@ func DeleteChannelByStatus(status int64) (int64, error) {
 	result := DB.Where("status = ?", status).Delete(&Channel{})
 	if result.Error == nil && len(ids) > 0 {
 		result.Error = DB.Where("channel_id IN ?", ids).Delete(&ChannelModelHealth{}).Error
+		if result.Error == nil {
+			result.Error = DeleteChannelModelManualDisables(ids)
+		}
 	}
 	return result.RowsAffected, result.Error
 }
@@ -913,6 +924,9 @@ func DeleteDisabledChannel() (int64, error) {
 	result := DB.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
 	if result.Error == nil && len(ids) > 0 {
 		result.Error = DB.Where("channel_id IN ?", ids).Delete(&ChannelModelHealth{}).Error
+		if result.Error == nil {
+			result.Error = DeleteChannelModelManualDisables(ids)
+		}
 	}
 	return result.RowsAffected, result.Error
 }

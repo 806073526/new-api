@@ -94,7 +94,8 @@ func runChannelModelHealthProbeTask(ctx context.Context) (channelModelHealthProb
 		if err := ctx.Err(); err != nil {
 			return summary, err
 		}
-		if model.IsChannelModelHealthExcluded(candidate.ChannelId, candidate.Model) ||
+		if model.IsChannelModelManuallyDisabled(candidate.ChannelId, candidate.Model) ||
+			model.IsChannelModelHealthExcluded(candidate.ChannelId, candidate.Model) ||
 			!model.IsChannelEnabledForGroupModel(candidate.Group, candidate.Model, candidate.ChannelId) {
 			summary.Skipped++
 			continue

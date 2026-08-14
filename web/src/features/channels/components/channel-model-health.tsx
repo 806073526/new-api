@@ -17,11 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, RefreshCw, RotateCcw } from 'lucide-react'
+import {
+  CircleOff,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+} from 'lucide-react'
 import { useDeferredValue, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -50,6 +58,8 @@ import { formatTimestamp } from '@/lib/format'
 import {
   getChannelHealthSummary,
   getChannelModelHealth,
+  disableChannelModelManually,
+  recoverChannelModelManuallyDisabled,
   resetChannelModelHealth,
 } from '../api'
 import {
@@ -74,11 +84,44 @@ const stateOptions = [
 function HealthStateBadge({
   state,
   healthRecordExists,
+  manualDisabled,
+  manualDisableReason,
+  manualDisabledBy,
+  manualDisabledAt,
 }: {
   state: ChannelModelHealthDisplayState
   healthRecordExists?: boolean
+  manualDisabled?: boolean
+  manualDisableReason?: string
+  manualDisabledBy?: string
+  manualDisabledAt?: number
 }) {
   const { t } = useTranslation()
+  if (manualDisabled) {
+    const details = [
+      manualDisableReason,
+      manualDisabledBy ? `${t('Operator')}: ${manualDisabledBy}` : '',
+      manualDisabledAt ? formatHealthTime(manualDisabledAt) : '',
+    ].filter(Boolean)
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Badge
+              className={getChannelModelHealthPresentationClassName(
+                'manual_disabled'
+              )}
+            >
+              {t('Manually disabled')}
+            </Badge>
+          }
+        />
+        {details.length > 0 ? (
+          <TooltipContent>{details.join(' · ')}</TooltipContent>
+        ) : null}
+      </Tooltip>
+    )
+  }
   if (state === 'open') {
     return (
       <Badge className={getChannelModelHealthPresentationClassName('open')}>
@@ -95,21 +138,25 @@ function HealthStateBadge({
   }
   if (state === 'half_open') {
     return (
-      <Badge className={getChannelModelHealthPresentationClassName('half_open')}>
+      <Badge
+        className={getChannelModelHealthPresentationClassName('half_open')}
+      >
         {t('Probing')}
       </Badge>
     )
   }
   if (state === 'suspect') {
-    return <Badge className={getChannelModelHealthPresentationClassName('suspect')}>{t('Suspect')}</Badge>
+    return (
+      <Badge className={getChannelModelHealthPresentationClassName('suspect')}>
+        {t('Suspect')}
+      </Badge>
+    )
   }
   const closedState = getChannelModelHealthClosedDisplayState({
     health_record_exists: healthRecordExists,
   })
   return (
-    <Badge
-      className={getChannelModelHealthPresentationClassName(closedState)}
-    >
+    <Badge className={getChannelModelHealthPresentationClassName(closedState)}>
       {t(closedState === 'healthy' ? 'Healthy' : 'Recovered')}
     </Badge>
   )
@@ -125,6 +172,10 @@ export function ChannelModelHealthTable() {
   const [page, setPage] = useState(1)
   const [state, setState] = useState('all')
   const [modelFilter, setModelFilter] = useState('')
+  const [manualAction, setManualAction] = useState<
+    { item: ChannelModelHealth; action: 'disable' | 'recover' } | undefined
+  >()
+  const [manualDisableReason, setManualDisableReason] = useState('')
   const deferredModelFilter = useDeferredValue(modelFilter.trim())
 
   const healthQuery = useQuery({
@@ -155,6 +206,7 @@ export function ChannelModelHealthTable() {
           halfOpen: result.halfOpen + item.half_open,
           suspect: result.suspect + item.suspect,
           healthy: result.healthy + (item.healthy ?? 0),
+          manualDisabled: result.manualDisabled + (item.manual_disabled ?? 0),
           recovered: result.recovered + item.closed,
         }),
         {
@@ -163,6 +215,7 @@ export function ChannelModelHealthTable() {
           halfOpen: 0,
           suspect: 0,
           healthy: 0,
+          manualDisabled: 0,
           recovered: 0,
         }
       ),
@@ -188,6 +241,60 @@ export function ChannelModelHealthTable() {
         }),
       ])
       toast.success(t('Model health reset'))
+    },
+  })
+
+  const manualDisableMutation = useMutation({
+    mutationFn: ({
+      item,
+      reason,
+    }: {
+      item: ChannelModelHealth
+      reason: string
+    }) =>
+      disableChannelModelManually({
+        channel_id: item.channel_id,
+        model: item.model,
+        reason,
+      }),
+    onSuccess: async (response) => {
+      if (!response.success) {
+        toast.error(response.message || t('Failed to manually disable model'))
+        return
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['channel-model-health'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['channel-model-health-summary'],
+        }),
+      ])
+      setManualAction(undefined)
+      setManualDisableReason('')
+      toast.success(t('Model manually disabled'))
+    },
+  })
+
+  const manualRecoverMutation = useMutation({
+    mutationFn: (item: ChannelModelHealth) =>
+      recoverChannelModelManuallyDisabled({
+        channel_id: item.channel_id,
+        model: item.model,
+      }),
+    onSuccess: async (response) => {
+      if (!response.success) {
+        toast.error(
+          response.message || t('Failed to restore manually disabled model')
+        )
+        return
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['channel-model-health'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['channel-model-health-summary'],
+        }),
+      ])
+      setManualAction(undefined)
+      toast.success(t('Manually disabled model restored'))
     },
   })
 
@@ -217,6 +324,10 @@ export function ChannelModelHealthTable() {
                 Math.floor(Date.now() / 1000)
               )}
               healthRecordExists={item.health_record_exists}
+              manualDisabled={item.manual_disabled}
+              manualDisableReason={item.manual_disable_reason}
+              manualDisabledBy={item.manual_disabled_by}
+              manualDisabledAt={item.manual_disabled_at}
             />
           </TableCell>
           <TableCell>{item.failure_count}</TableCell>
@@ -233,22 +344,65 @@ export function ChannelModelHealthTable() {
             <ChannelModelHealthLastRequest item={item} />
           </TableCell>
           <TableCell className='text-right'>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant='ghost'
-                    size='icon-sm'
-                    aria-label={t('Reset model health')}
-                    disabled={resetMutation.isPending}
-                    onClick={() => resetMutation.mutate(item)}
-                  />
-                }
-              >
-                <RotateCcw />
-              </TooltipTrigger>
-              <TooltipContent>{t('Reset model health')}</TooltipContent>
-            </Tooltip>
+            <div className='flex justify-end gap-1'>
+              {item.manual_disabled ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant='ghost'
+                        size='icon-sm'
+                        aria-label={t('Restore manually disabled model')}
+                        disabled={manualRecoverMutation.isPending}
+                        onClick={() =>
+                          setManualAction({ item, action: 'recover' })
+                        }
+                      />
+                    }
+                  >
+                    <ShieldCheck />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {t('Restore manually disabled model')}
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant='ghost'
+                        size='icon-sm'
+                        aria-label={t('Manually disable model')}
+                        disabled={manualDisableMutation.isPending}
+                        onClick={() =>
+                          setManualAction({ item, action: 'disable' })
+                        }
+                      />
+                    }
+                  >
+                    <CircleOff />
+                  </TooltipTrigger>
+                  <TooltipContent>{t('Manually disable model')}</TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant='ghost'
+                      size='icon-sm'
+                      aria-label={t('Reset model health')}
+                      disabled={resetMutation.isPending}
+                      onClick={() => resetMutation.mutate(item)}
+                    />
+                  }
+                >
+                  <RotateCcw />
+                </TooltipTrigger>
+                <TooltipContent>{t('Reset model health')}</TooltipContent>
+              </Tooltip>
+            </div>
           </TableCell>
         </TableRow>
       ))}
@@ -290,6 +444,14 @@ export function ChannelModelHealthTable() {
             className={getChannelModelHealthPresentationClassName('recovered')}
           >
             {t('Recovered')} {totals.recovered}
+          </Badge>
+          <Badge
+            variant='outline'
+            className={getChannelModelHealthPresentationClassName(
+              'manual_disabled'
+            )}
+          >
+            {t('Manually disabled')} {totals.manualDisabled}
           </Badge>
           <Badge
             variant='outline'
@@ -417,6 +579,57 @@ export function ChannelModelHealthTable() {
           </Button>
         </div>
       </div>
+      <ConfirmDialog
+        open={manualAction !== undefined}
+        onOpenChange={(open) => {
+          if (!open) {
+            setManualAction(undefined)
+            setManualDisableReason('')
+          }
+        }}
+        title={
+          manualAction?.action === 'disable'
+            ? t('Manually disable model')
+            : t('Restore manually disabled model')
+        }
+        desc={
+          manualAction?.action === 'disable'
+            ? t(
+                'This blocks the selected channel model for every group. Automatic probes and successes cannot restore it.'
+              )
+            : t(
+                'This immediately makes the selected channel model available again and resets its automatic health state.'
+              )
+        }
+        confirmText={
+          manualAction?.action === 'disable'
+            ? t('Disable model')
+            : t('Restore model')
+        }
+        destructive={manualAction?.action === 'disable'}
+        isLoading={
+          manualDisableMutation.isPending || manualRecoverMutation.isPending
+        }
+        handleConfirm={() => {
+          if (!manualAction) return
+          if (manualAction.action === 'disable') {
+            manualDisableMutation.mutate({
+              item: manualAction.item,
+              reason: manualDisableReason,
+            })
+            return
+          }
+          manualRecoverMutation.mutate(manualAction.item)
+        }}
+      >
+        {manualAction?.action === 'disable' ? (
+          <Input
+            value={manualDisableReason}
+            onChange={(event) => setManualDisableReason(event.target.value)}
+            placeholder={t('Reason (optional)')}
+          />
+        ) : null}
+      </ConfirmDialog>
     </div>
   )
 }

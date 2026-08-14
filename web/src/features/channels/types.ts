@@ -109,12 +109,17 @@ export type ChannelModelHealth = {
   channel_name: string
   channel_status: number
   health_record_exists?: boolean
+  manual_disabled?: boolean
+  manual_disable_reason?: string
+  manual_disabled_by?: string
+  manual_disabled_at?: number
 }
 
 export type ChannelModelHealthSummary = {
   channel_id: number
   total: number
   healthy?: number
+  manual_disabled?: number
   suspect: number
   open: number
   ready?: number
@@ -130,6 +135,7 @@ export type ChannelModelHealthSummaryModel = {
   state: ChannelModelHealthState
   ready: boolean
   health_record_exists: boolean
+  manual_disabled?: boolean
 }
 
 export type ChannelModelHealthSummaryIssue = {
@@ -144,6 +150,8 @@ export type ChannelModelHealthSummaryIssue = {
   last_request_username: string
   last_request_token_name: string
   last_request_at: number
+  manual_disabled?: boolean
+  manual_disable_reason?: string
 }
 
 export type ChannelActivityDetail = {

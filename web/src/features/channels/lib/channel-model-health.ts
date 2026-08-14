@@ -56,6 +56,7 @@ export function getChannelModelHealthClosedItems(
 export type ChannelModelHealthPresentationState =
   | 'healthy'
   | 'recovered'
+  | 'manual_disabled'
   | 'suspect'
   | 'open'
   | 'ready'
@@ -65,6 +66,9 @@ export function getChannelModelHealthPresentationState(
   item: ChannelModelHealth,
   now: number
 ): ChannelModelHealthPresentationState {
+  if (item.manual_disabled) {
+    return 'manual_disabled'
+  }
   const state = getChannelModelHealthDisplayState(item, now)
   if (state !== 'closed') {
     return state
@@ -80,6 +84,8 @@ export function getChannelModelHealthPresentationLabelKey(
       return 'Healthy'
     case 'recovered':
       return 'Recovered'
+    case 'manual_disabled':
+      return 'Manually disabled'
     case 'suspect':
       return 'Suspect'
     case 'open':
@@ -103,10 +109,11 @@ const channelModelHealthPresentationOrder: Record<
 > = {
   healthy: 0,
   recovered: 1,
-  half_open: 2,
-  ready: 3,
-  suspect: 4,
-  open: 5,
+  half_open: 3,
+  ready: 4,
+  suspect: 5,
+  open: 6,
+  manual_disabled: 2,
 }
 
 export function getChannelModelHealthPresentationClassName(
@@ -117,6 +124,8 @@ export function getChannelModelHealthPresentationClassName(
       return 'text-emerald-600 dark:text-emerald-400'
     case 'recovered':
       return 'text-cyan-600 dark:text-cyan-400'
+    case 'manual_disabled':
+      return 'text-red-700 dark:text-red-300'
     case 'half_open':
       return 'text-sky-600 dark:text-sky-400'
     case 'ready':
@@ -131,6 +140,9 @@ export function getChannelModelHealthPresentationClassName(
 function getChannelModelHealthSummaryPresentationState(
   item: ChannelModelHealthSummaryModel
 ): ChannelModelHealthPresentationState {
+  if (item.manual_disabled) {
+    return 'manual_disabled'
+  }
   if (item.state === 'closed') {
     return getChannelModelHealthClosedDisplayState(item)
   }

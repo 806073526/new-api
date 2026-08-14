@@ -24,6 +24,7 @@ var channelSyncLock sync.RWMutex
 
 func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
+		InitChannelModelManualDisableCache()
 		InvalidatePricingCache()
 		return
 	}
@@ -43,6 +44,7 @@ func InitChannelCache() {
 	DB.Find(&abilities)
 	newGroup2model2channels := buildChannelModelIndex(channels, abilities)
 	InitChannelModelHealthCache()
+	InitChannelModelManualDisableCache()
 
 	channelSyncLock.Lock()
 	group2model2channels = newGroup2model2channels
@@ -134,6 +136,7 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	if len(channels) == 0 {
 		return nil, nil
 	}
+	channels = filterChannelModelManualDisableCandidates(channels, group, model)
 	channels = filterChannelModelHealthCandidates(channels, group, model, common.GetTimestamp())
 	if len(channels) == 0 {
 		return nil, nil

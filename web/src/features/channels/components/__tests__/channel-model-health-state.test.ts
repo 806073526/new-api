@@ -63,6 +63,16 @@ describe('channel model health display state', () => {
     )
   })
 
+  test('shows a manual model disable before any automatic health state', () => {
+    assert.equal(
+      channelModelHealth.getChannelModelHealthPresentationState(
+        { ...baseHealth, manual_disabled: true },
+        100
+      ),
+      'manual_disabled'
+    )
+  })
+
   test('returns model and group labels for problematic channel models', () => {
     assert.deepEqual(
       channelModelHealth.getChannelModelHealthIssueLabels([

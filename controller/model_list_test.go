@@ -53,6 +53,7 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 		&model.User{},
 		&model.Channel{},
 		&model.ChannelModelHealth{},
+		&model.ChannelModelManualDisable{},
 		&model.Ability{},
 		&model.Model{},
 		&model.Vendor{},

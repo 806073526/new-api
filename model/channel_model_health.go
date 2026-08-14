@@ -71,6 +71,10 @@ type ChannelModelHealthView struct {
 	LastRequestUsername  string `json:"last_request_username" gorm:"-"`
 	LastRequestTokenName string `json:"last_request_token_name" gorm:"-"`
 	LastRequestAt        int64  `json:"last_request_at" gorm:"-"`
+	ManualDisabled       bool   `json:"manual_disabled" gorm:"-"`
+	ManualDisableReason  string `json:"manual_disable_reason" gorm:"-"`
+	ManualDisabledBy     string `json:"manual_disabled_by" gorm:"-"`
+	ManualDisabledAt     int64  `json:"manual_disabled_at" gorm:"-"`
 }
 
 type ChannelModelHealthListParams struct {
@@ -83,16 +87,17 @@ type ChannelModelHealthListParams struct {
 }
 
 type ChannelModelHealthSummaryItem struct {
-	ChannelId int                              `json:"channel_id"`
-	Total     int64                            `json:"total"`
-	Healthy   int64                            `json:"healthy"`
-	Suspect   int64                            `json:"suspect"`
-	Open      int64                            `json:"open"`
-	Ready     int64                            `json:"ready"`
-	HalfOpen  int64                            `json:"half_open"`
-	Closed    int64                            `json:"closed"`
-	Issues    []ChannelModelHealthSummaryIssue `json:"issues,omitempty"`
-	Models    []ChannelModelHealthSummaryModel `json:"models,omitempty"`
+	ChannelId      int                              `json:"channel_id"`
+	Total          int64                            `json:"total"`
+	Healthy        int64                            `json:"healthy"`
+	ManualDisabled int64                            `json:"manual_disabled"`
+	Suspect        int64                            `json:"suspect"`
+	Open           int64                            `json:"open"`
+	Ready          int64                            `json:"ready"`
+	HalfOpen       int64                            `json:"half_open"`
+	Closed         int64                            `json:"closed"`
+	Issues         []ChannelModelHealthSummaryIssue `json:"issues,omitempty"`
+	Models         []ChannelModelHealthSummaryModel `json:"models,omitempty"`
 }
 
 type ChannelModelHealthSummaryModel struct {
@@ -101,6 +106,7 @@ type ChannelModelHealthSummaryModel struct {
 	State              ChannelModelHealthState `json:"state"`
 	Ready              bool                    `json:"ready"`
 	HealthRecordExists bool                    `json:"health_record_exists"`
+	ManualDisabled     bool                    `json:"manual_disabled"`
 }
 
 type ChannelModelHealthSummaryIssue struct {
@@ -115,6 +121,8 @@ type ChannelModelHealthSummaryIssue struct {
 	LastRequestUsername  string                  `json:"last_request_username"`
 	LastRequestTokenName string                  `json:"last_request_token_name"`
 	LastRequestAt        int64                   `json:"last_request_at"`
+	ManualDisabled       bool                    `json:"manual_disabled"`
+	ManualDisableReason  string                  `json:"manual_disable_reason"`
 }
 
 func (ChannelModelHealth) TableName() string {
@@ -696,6 +704,20 @@ func listChannelModelHealthViews() ([]ChannelModelHealthView, error) {
 			ChannelStatus: ability.ChannelStatus,
 		})
 	}
+	manualDisables, err := activeChannelModelManualDisables()
+	if err != nil {
+		return nil, err
+	}
+	for index := range items {
+		manualDisable, exists := manualDisables[normalizeChannelModelManualDisableKey(items[index].ChannelId, items[index].Model)]
+		if !exists {
+			continue
+		}
+		items[index].ManualDisabled = true
+		items[index].ManualDisableReason = manualDisable.Reason
+		items[index].ManualDisabledBy = manualDisable.OperatorName
+		items[index].ManualDisabledAt = manualDisable.CreatedAt
+	}
 	return items, nil
 }
 
@@ -826,7 +848,9 @@ func getChannelModelHealthSummary(channelIDs []int, includeModels bool) ([]Chann
 		if state == "" {
 			state = ChannelModelHealthClosed
 		}
-		if !view.HealthRecordExists && state == ChannelModelHealthClosed {
+		if view.ManualDisabled {
+			item.ManualDisabled++
+		} else if !view.HealthRecordExists && state == ChannelModelHealthClosed {
 			item.Healthy++
 		}
 		switch state {
@@ -846,16 +870,18 @@ func getChannelModelHealthSummary(channelIDs []int, includeModels bool) ([]Chann
 			}
 		}
 
-		if state == ChannelModelHealthSuspect || state == ChannelModelHealthOpen || state == ChannelModelHealthHalfOpen {
+		if view.ManualDisabled || state == ChannelModelHealthSuspect || state == ChannelModelHealthOpen || state == ChannelModelHealthHalfOpen {
 			item.Issues = append(item.Issues, ChannelModelHealthSummaryIssue{
-				Group:          view.Group,
-				Model:          view.Model,
-				State:          state,
-				Ready:          state == ChannelModelHealthOpen && view.CooldownUntil <= now,
-				FailureCount:   view.FailureCount,
-				LastStatusCode: view.LastStatusCode,
-				LastErrorCode:  view.LastErrorCode,
-				LastError:      view.LastError,
+				Group:               view.Group,
+				Model:               view.Model,
+				State:               state,
+				Ready:               !view.ManualDisabled && state == ChannelModelHealthOpen && view.CooldownUntil <= now,
+				FailureCount:        view.FailureCount,
+				LastStatusCode:      view.LastStatusCode,
+				LastErrorCode:       view.LastErrorCode,
+				LastError:           view.LastError,
+				ManualDisabled:      view.ManualDisabled,
+				ManualDisableReason: view.ManualDisableReason,
 			})
 		}
 		if includeModels {
@@ -865,6 +891,7 @@ func getChannelModelHealthSummary(channelIDs []int, includeModels bool) ([]Chann
 				State:              state,
 				Ready:              state == ChannelModelHealthOpen && view.CooldownUntil <= now,
 				HealthRecordExists: view.HealthRecordExists,
+				ManualDisabled:     view.ManualDisabled,
 			})
 		}
 	}
