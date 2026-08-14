@@ -34,3 +34,20 @@ test('observes dialog model tests and provides model health controls', async () 
   assert.match(source, /openChannelModelHealth/)
   assert.match(source, /recoverChannelModelHealth/)
 })
+
+test('refreshes health summaries when a channel test refreshes the channel list', async () => {
+  const source = await readFile(
+    resolve(componentsDirectory, '..', 'dialogs', 'channel-test-dialog.tsx'),
+    'utf8'
+  )
+  const refreshStart = source.indexOf('const refreshChannelLists')
+  const testStart = source.indexOf('const testSingleModel', refreshStart)
+  assert.ok(refreshStart >= 0)
+  assert.ok(testStart > refreshStart)
+  const refreshSource = source.slice(refreshStart, testStart)
+  assert.match(refreshSource, /invalidateQueries\(/)
+  assert.match(
+    refreshSource,
+    /queryKey:\s*\[\s*['"]channel-model-health-summary['"]\s*\]/
+  )
+})

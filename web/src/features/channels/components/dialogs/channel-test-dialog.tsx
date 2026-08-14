@@ -102,6 +102,7 @@ import {
 } from '../../lib'
 import {
   getChannelModelHealthPresentationLabelKey,
+  getChannelModelHealthPresentationClassName,
   groupChannelModelHealthSummaryModels,
   hasMultipleChannelModelHealthGroups,
 } from '../../lib/channel-model-health'
@@ -626,6 +627,11 @@ function ChannelTestDialogContent({
       updateChannelTestCache(patch)
       void queryClient
         .invalidateQueries({ queryKey: channelsQueryKeys.lists() })
+        .then(() =>
+          queryClient.invalidateQueries({
+            queryKey: ['channel-model-health-summary'],
+          })
+        )
         .then(() => updateChannelTestCache(patch))
         .catch(() => undefined)
     },
@@ -1024,7 +1030,12 @@ function ChannelTestDialogContent({
           return (
             <div className='space-y-0.5 text-left text-xs'>
               {groups.map((item) => (
-                <div key={`${item.state}:${item.group}`}>
+                <div
+                  key={`${item.state}:${item.group}`}
+                  className={getChannelModelHealthPresentationClassName(
+                    item.state
+                  )}
+                >
                   {showGroup && (
                     <>
                       {item.group} {t('Group')}:{' '}

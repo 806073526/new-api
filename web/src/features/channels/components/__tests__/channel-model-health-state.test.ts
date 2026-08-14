@@ -239,12 +239,87 @@ describe('channel model health display state', () => {
       ]),
       [
         { state: 'healthy', group: 'A', models: ['gpt-5.6-sol'] },
-        { state: 'suspect', group: 'B', models: ['gpt-5.6-luna'] },
         { state: 'recovered', group: 'C', models: ['gpt-4.1'] },
+        { state: 'suspect', group: 'B', models: ['gpt-5.6-luna'] },
         { state: 'open', group: 'A', models: ['gpt-5.4', 'gpt-5.5'] },
         { state: 'open', group: 'B', models: ['gpt-5.6-sol'] },
       ]
     )
+  })
+
+  test('orders health labels from healthy to circuit open', () => {
+    const groupSummaryModels = Reflect.get(
+      channelModelHealth,
+      'groupChannelModelHealthSummaryModels'
+    )
+    assert.equal(typeof groupSummaryModels, 'function')
+    assert.deepEqual(
+      groupSummaryModels([
+        {
+          group: 'default',
+          model: 'open-model',
+          state: 'open',
+          ready: false,
+          health_record_exists: true,
+        },
+        {
+          group: 'default',
+          model: 'suspect-model',
+          state: 'suspect',
+          ready: false,
+          health_record_exists: true,
+        },
+        {
+          group: 'default',
+          model: 'ready-model',
+          state: 'open',
+          ready: true,
+          health_record_exists: true,
+        },
+        {
+          group: 'default',
+          model: 'probing-model',
+          state: 'half_open',
+          ready: false,
+          health_record_exists: true,
+        },
+        {
+          group: 'default',
+          model: 'recovered-model',
+          state: 'closed',
+          ready: false,
+          health_record_exists: true,
+        },
+        {
+          group: 'default',
+          model: 'healthy-model',
+          state: 'closed',
+          ready: false,
+          health_record_exists: false,
+        },
+      ]).map((item: { state: string }) => item.state),
+      ['healthy', 'recovered', 'half_open', 'ready', 'suspect', 'open']
+    )
+  })
+
+  test('assigns a distinct color class to every health label', () => {
+    const getClassName = Reflect.get(
+      channelModelHealth,
+      'getChannelModelHealthPresentationClassName'
+    )
+    assert.equal(typeof getClassName, 'function')
+    const states = [
+      'healthy',
+      'recovered',
+      'half_open',
+      'ready',
+      'suspect',
+      'open',
+    ] as const
+    const classNames = states.map((state) => getClassName(state))
+    assert.equal(new Set(classNames).size, states.length)
+    assert.match(classNames[0], /emerald/)
+    assert.match(classNames.at(-1) ?? '', /red/)
   })
 
   test('shows group labels only when the health display has multiple groups', () => {

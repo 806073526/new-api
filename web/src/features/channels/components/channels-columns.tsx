@@ -88,6 +88,7 @@ import {
 } from '../lib/channel-activity'
 import {
   getChannelModelHealthPresentationLabelKey,
+  getChannelModelHealthPresentationClassName,
   groupChannelModelHealthSummaryModels,
   hasMultipleChannelModelHealthGroups,
 } from '../lib/channel-model-health'
@@ -1100,7 +1101,9 @@ export function useChannelsColumns(
             <div className='min-w-80 space-y-2 py-1 text-left text-xs'>
               {healthSections.map((section) => (
                 <div key={section.state}>
-                  <div className='font-medium'>
+                  <div
+                    className={`font-medium ${getChannelModelHealthPresentationClassName(section.state)}`}
+                  >
                     {t(
                       getChannelModelHealthPresentationLabelKey(section.state)
                     )}

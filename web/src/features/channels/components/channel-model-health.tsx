@@ -55,6 +55,7 @@ import {
 import {
   getChannelModelHealthClosedDisplayState,
   getChannelModelHealthDisplayState,
+  getChannelModelHealthPresentationClassName,
   type ChannelModelHealthDisplayState,
 } from '../lib/channel-model-health'
 import type { ChannelModelHealth } from '../types'
@@ -79,36 +80,36 @@ function HealthStateBadge({
 }) {
   const { t } = useTranslation()
   if (state === 'open') {
-    return <Badge variant='destructive'>{t('Circuit open')}</Badge>
+    return (
+      <Badge className={getChannelModelHealthPresentationClassName('open')}>
+        {t('Circuit open')}
+      </Badge>
+    )
   }
   if (state === 'ready') {
     return (
-      <Badge
-        variant='outline'
-        className='border-sky-500/50 text-sky-700 dark:text-sky-300'
-      >
+      <Badge className={getChannelModelHealthPresentationClassName('ready')}>
         {t('Waiting for probe')}
       </Badge>
     )
   }
   if (state === 'half_open') {
-    return <Badge variant='secondary'>{t('Probing')}</Badge>
-  }
-  if (state === 'suspect') {
     return (
-      <Badge
-        variant='outline'
-        className='border-amber-500/50 text-amber-700 dark:text-amber-300'
-      >
-        {t('Suspect')}
+      <Badge className={getChannelModelHealthPresentationClassName('half_open')}>
+        {t('Probing')}
       </Badge>
     )
+  }
+  if (state === 'suspect') {
+    return <Badge className={getChannelModelHealthPresentationClassName('suspect')}>{t('Suspect')}</Badge>
   }
   const closedState = getChannelModelHealthClosedDisplayState({
     health_record_exists: healthRecordExists,
   })
   return (
-    <Badge variant='outline'>
+    <Badge
+      className={getChannelModelHealthPresentationClassName(closedState)}
+    >
       {t(closedState === 'healthy' ? 'Healthy' : 'Recovered')}
     </Badge>
   )
@@ -278,29 +279,41 @@ export function ChannelModelHealthTable() {
     <div className='flex min-h-0 flex-1 flex-col gap-3'>
       <div className='flex flex-col gap-3 border-b pb-3 lg:flex-row lg:items-center lg:justify-between'>
         <div className='flex min-w-0 flex-wrap items-center gap-2'>
-          <Badge variant='destructive'>
-            {t('Circuit open')} {totals.open}
+          <Badge
+            variant='outline'
+            className={getChannelModelHealthPresentationClassName('healthy')}
+          >
+            {t('Healthy')} {totals.healthy}
           </Badge>
           <Badge
             variant='outline'
-            className='border-sky-500/50 text-sky-700 dark:text-sky-300'
+            className={getChannelModelHealthPresentationClassName('recovered')}
           >
-            {t('Waiting for probe')} {totals.ready}
+            {t('Recovered')} {totals.recovered}
           </Badge>
-          <Badge variant='secondary'>
+          <Badge
+            variant='outline'
+            className={getChannelModelHealthPresentationClassName('half_open')}
+          >
             {t('Probing')} {totals.halfOpen}
           </Badge>
           <Badge
             variant='outline'
-            className='border-amber-500/50 text-amber-700 dark:text-amber-300'
+            className={getChannelModelHealthPresentationClassName('ready')}
+          >
+            {t('Waiting for probe')} {totals.ready}
+          </Badge>
+          <Badge
+            variant='outline'
+            className={getChannelModelHealthPresentationClassName('suspect')}
           >
             {t('Suspect')} {totals.suspect}
           </Badge>
-          <Badge variant='outline'>
-            {t('Healthy')} {totals.healthy}
-          </Badge>
-          <Badge variant='outline'>
-            {t('Recovered')} {totals.recovered}
+          <Badge
+            variant='outline'
+            className={getChannelModelHealthPresentationClassName('open')}
+          >
+            {t('Circuit open')} {totals.open}
           </Badge>
         </div>
         <div className='flex min-w-0 items-center gap-2'>

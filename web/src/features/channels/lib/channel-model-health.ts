@@ -102,11 +102,30 @@ const channelModelHealthPresentationOrder: Record<
   number
 > = {
   healthy: 0,
-  suspect: 1,
-  recovered: 2,
-  open: 3,
-  ready: 4,
-  half_open: 5,
+  recovered: 1,
+  half_open: 2,
+  ready: 3,
+  suspect: 4,
+  open: 5,
+}
+
+export function getChannelModelHealthPresentationClassName(
+  state: ChannelModelHealthPresentationState
+): string {
+  switch (state) {
+    case 'healthy':
+      return 'text-emerald-600 dark:text-emerald-400'
+    case 'recovered':
+      return 'text-cyan-600 dark:text-cyan-400'
+    case 'half_open':
+      return 'text-sky-600 dark:text-sky-400'
+    case 'ready':
+      return 'text-yellow-600 dark:text-yellow-400'
+    case 'suspect':
+      return 'text-orange-600 dark:text-orange-400'
+    case 'open':
+      return 'text-red-600 dark:text-red-400'
+  }
 }
 
 function getChannelModelHealthSummaryPresentationState(
