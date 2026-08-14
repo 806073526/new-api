@@ -35,6 +35,22 @@ test('observes dialog model tests and provides model health controls', async () 
   assert.match(source, /recoverChannelModelHealth/)
 })
 
+test('provides distinct manual disable and circuit breaker controls', async () => {
+  const source = await readFile(
+    resolve(componentsDirectory, '..', 'dialogs', 'channel-test-dialog.tsx'),
+    'utf8'
+  )
+
+  assert.match(source, /disableChannelModelManually/)
+  assert.match(source, /recoverChannelModelManuallyDisabled/)
+  assert.match(source, /action: 'manual_disable'/)
+  assert.match(source, /action: 'manual_recover'/)
+  assert.match(source, /<CircleOff className='size-4' \/>/)
+  assert.match(source, /<ShieldCheck className='size-4' \/>/)
+  assert.match(source, /<ShieldAlert className='size-4' \/>/)
+  assert.match(source, /<RotateCcw className='size-4' \/>/)
+})
+
 test('refreshes health summaries when a channel test refreshes the channel list', async () => {
   const source = await readFile(
     resolve(componentsDirectory, '..', 'dialogs', 'channel-test-dialog.tsx'),

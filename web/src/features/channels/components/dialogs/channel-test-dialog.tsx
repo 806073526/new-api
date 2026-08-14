@@ -32,6 +32,8 @@ import {
   Loader2,
   RotateCcw,
   Settings,
+  ShieldAlert,
+  ShieldCheck,
   Trash2,
 } from 'lucide-react'
 import {
@@ -90,8 +92,10 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 import {
+  disableChannelModelManually,
   getChannelHealthSummary,
   openChannelModelHealth,
+  recoverChannelModelManuallyDisabled,
   recoverChannelModelHealth,
   updateChannel,
 } from '../../api'
@@ -127,7 +131,11 @@ type ModelRow = {
   model: string
 }
 
-type ModelHealthAction = 'open' | 'recover'
+type ModelHealthAction =
+  | 'open'
+  | 'recover'
+  | 'manual_disable'
+  | 'manual_recover'
 
 type TestStatus = 'idle' | 'testing' | 'success' | 'error'
 
@@ -374,6 +382,7 @@ function ChannelTestDialogContent({
     action: ModelHealthAction
   } | null>(null)
   const [isUpdatingModelHealth, setIsUpdatingModelHealth] = useState(false)
+  const [modelHealthActionReason, setModelHealthActionReason] = useState('')
   const [pagination, setPagination] = useState({
     pageIndex: 0,
     pageSize: 30,
@@ -437,6 +446,7 @@ function ChannelTestDialogContent({
     setFailureDetails(null)
     setModelHealthAction(null)
     setIsUpdatingModelHealth(false)
+    setModelHealthActionReason('')
     setPagination({ pageIndex: 0, pageSize: 30 })
   }, [])
 
@@ -504,14 +514,29 @@ function ChannelTestDialogContent({
     if (!modelHealthAction) return
     setIsUpdatingModelHealth(true)
     try {
-      const action =
-        modelHealthAction.action === 'open'
-          ? openChannelModelHealth
-          : recoverChannelModelHealth
-      const response = await action({
-        channel_id: currentChannelId,
-        model: modelHealthAction.model,
-      })
+      let response
+      if (modelHealthAction.action === 'open') {
+        response = await openChannelModelHealth({
+          channel_id: currentChannelId,
+          model: modelHealthAction.model,
+        })
+      } else if (modelHealthAction.action === 'recover') {
+        response = await recoverChannelModelHealth({
+          channel_id: currentChannelId,
+          model: modelHealthAction.model,
+        })
+      } else if (modelHealthAction.action === 'manual_disable') {
+        response = await disableChannelModelManually({
+          channel_id: currentChannelId,
+          model: modelHealthAction.model,
+          reason: modelHealthActionReason.trim() || undefined,
+        })
+      } else {
+        response = await recoverChannelModelManuallyDisabled({
+          channel_id: currentChannelId,
+          model: modelHealthAction.model,
+        })
+      }
       if (!response.success) {
         toast.error(response.message || t('Failed to update model health'))
         return
@@ -525,14 +550,17 @@ function ChannelTestDialogContent({
       await queryClient.invalidateQueries({
         queryKey: ['channel-model-health'],
       })
-      toast.success(
-        t(
-          modelHealthAction.action === 'open'
-            ? 'Model health circuit opened'
-            : 'Model health recovered'
-        )
-      )
+      let successMessage = 'Model health recovered'
+      if (modelHealthAction.action === 'open') {
+        successMessage = 'Model health circuit opened'
+      } else if (modelHealthAction.action === 'manual_disable') {
+        successMessage = 'Model manually disabled'
+      } else if (modelHealthAction.action === 'manual_recover') {
+        successMessage = 'Manually disabled model restored'
+      }
+      toast.success(t(successMessage))
       setModelHealthAction(null)
+      setModelHealthActionReason('')
     } catch (error: unknown) {
       toast.error(
         error instanceof Error
@@ -542,7 +570,13 @@ function ChannelTestDialogContent({
     } finally {
       setIsUpdatingModelHealth(false)
     }
-  }, [currentChannelId, modelHealthAction, queryClient, t])
+  }, [
+    currentChannelId,
+    modelHealthAction,
+    modelHealthActionReason,
+    queryClient,
+    t,
+  ])
 
   const successModels = useMemo(
     () => models.filter((model) => testResults[model]?.status === 'success'),
@@ -1056,6 +1090,10 @@ function ChannelTestDialogContent({
         cell: ({ row }) => {
           const model = row.original.model
           const isTestingModel = testingModels.has(model)
+          const modelHealthEntries = modelHealthByModel.get(model) ?? []
+          const isManuallyDisabled = modelHealthEntries.some(
+            (item) => item.manual_disabled
+          )
 
           return (
             <div className='flex items-center gap-1'>
@@ -1085,19 +1123,64 @@ function ChannelTestDialogContent({
                     <Button
                       variant='ghost'
                       size='icon-sm'
+                      onClick={() => {
+                        if (isManuallyDisabled) {
+                          setModelHealthAction({
+                            model,
+                            action: 'manual_recover',
+                          })
+                          return
+                        }
+                        setModelHealthAction({
+                          model,
+                          action: 'manual_disable',
+                        })
+                      }}
+                      disabled={
+                        isTestingModel ||
+                        isBatchTesting ||
+                        isUpdatingModelHealth
+                      }
+                      aria-label={
+                        isManuallyDisabled
+                          ? t('Restore manually disabled model')
+                          : t('Manually disable model')
+                      }
+                    />
+                  }
+                >
+                  {isManuallyDisabled ? (
+                    <ShieldCheck className='size-4' />
+                  ) : (
+                    <CircleOff className='size-4' />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isManuallyDisabled
+                    ? t('Restore manually disabled model')
+                    : t('Manually disable model')}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant='ghost'
+                      size='icon-sm'
                       onClick={() =>
                         setModelHealthAction({ model, action: 'open' })
                       }
                       disabled={
                         isTestingModel ||
                         isBatchTesting ||
-                        isUpdatingModelHealth
+                        isUpdatingModelHealth ||
+                        isManuallyDisabled
                       }
                       aria-label={t('Open circuit')}
                     />
                   }
                 >
-                  <CircleOff className='size-4' />
+                  <ShieldAlert className='size-4' />
                 </TooltipTrigger>
                 <TooltipContent>{t('Open circuit')}</TooltipContent>
               </Tooltip>
@@ -1113,7 +1196,8 @@ function ChannelTestDialogContent({
                       disabled={
                         isTestingModel ||
                         isBatchTesting ||
-                        isUpdatingModelHealth
+                        isUpdatingModelHealth ||
+                        isManuallyDisabled
                       }
                       aria-label={t('Recover')}
                     />
@@ -1155,6 +1239,39 @@ function ChannelTestDialogContent({
     withSortedRowModel: false,
     withFacetedRowModel: false,
   })
+
+  const modelHealthActionModel = modelHealthAction?.model ?? ''
+  let modelHealthActionTitle = t('Recover')
+  let modelHealthActionDescription = t(
+    'Recover {{model}} in every group of this channel?',
+    { model: modelHealthActionModel }
+  )
+  let modelHealthActionConfirmText = t('Recover')
+  let isModelHealthActionDestructive = false
+  if (modelHealthAction?.action === 'open') {
+    modelHealthActionTitle = t('Open circuit')
+    modelHealthActionDescription = t(
+      'Open the circuit for {{model}} in every group of this channel?',
+      { model: modelHealthActionModel }
+    )
+    modelHealthActionConfirmText = t('Open circuit')
+    isModelHealthActionDestructive = true
+  } else if (modelHealthAction?.action === 'manual_disable') {
+    modelHealthActionTitle = t('Manually disable model')
+    modelHealthActionDescription = t(
+      'This blocks {{model}} for every group of this channel. Automatic probes and successes cannot restore it.',
+      { model: modelHealthActionModel }
+    )
+    modelHealthActionConfirmText = t('Disable model')
+    isModelHealthActionDestructive = true
+  } else if (modelHealthAction?.action === 'manual_recover') {
+    modelHealthActionTitle = t('Restore manually disabled model')
+    modelHealthActionDescription = t(
+      'This immediately makes {{model}} available again and resets its automatic health state.',
+      { model: modelHealthActionModel }
+    )
+    modelHealthActionConfirmText = t('Restore model')
+  }
 
   return (
     <>
@@ -1364,34 +1481,24 @@ function ChannelTestDialogContent({
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             setModelHealthAction(null)
+            setModelHealthActionReason('')
           }
         }}
-        title={
-          modelHealthAction?.action === 'open'
-            ? t('Open circuit')
-            : t('Recover')
-        }
-        desc={
-          modelHealthAction?.action === 'open'
-            ? t(
-                'Open the circuit for {{model}} in every group of this channel?',
-                {
-                  model: modelHealthAction?.model ?? '',
-                }
-              )
-            : t('Recover {{model}} in every group of this channel?', {
-                model: modelHealthAction?.model ?? '',
-              })
-        }
-        destructive={modelHealthAction?.action === 'open'}
+        title={modelHealthActionTitle}
+        desc={modelHealthActionDescription}
+        destructive={isModelHealthActionDestructive}
         isLoading={isUpdatingModelHealth}
-        confirmText={
-          modelHealthAction?.action === 'open'
-            ? t('Open circuit')
-            : t('Recover')
-        }
+        confirmText={modelHealthActionConfirmText}
         handleConfirm={runModelHealthAction}
-      />
+      >
+        {modelHealthAction?.action === 'manual_disable' ? (
+          <Input
+            value={modelHealthActionReason}
+            onChange={(event) => setModelHealthActionReason(event.target.value)}
+            placeholder={t('Reason (optional)')}
+          />
+        ) : null}
+      </ConfirmDialog>
       <FailureDetailsSheet
         details={failureDetails}
         onOpenChange={(sheetOpen) => {
