@@ -140,13 +140,15 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 
 	totals := map[string]counters{}
 	modelBuckets := map[string]map[int64]counters{}
-	for _, row := range rows {
-		value := counters{
-			requestCount:   row.RequestCount,
-			successCount:   row.SuccessCount,
-			totalLatencyMs: row.TotalLatencyMs,
-			outputTokens:   row.OutputTokens,
-			generationMs:   row.GenerationMs,
+		for _, row := range rows {
+			value := counters{
+				requestCount:   row.RequestCount,
+				successCount:   row.SuccessCount,
+				totalLatencyMs: row.TotalLatencyMs,
+				ttftSumMs:      row.TtftSumMs,
+				ttftCount:      row.TtftCount,
+				outputTokens:   row.OutputTokens,
+				generationMs:   row.GenerationMs,
 		}
 		mergeModelTotals(totals, row.ModelName, value)
 		mergeModelBucket(modelBuckets, row.ModelName, row.BucketTs, value)
@@ -182,9 +184,10 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 		if total.generationMs > 0 {
 			avgTps = float64(total.outputTokens) / (float64(total.generationMs) / 1000.0)
 		}
-		models = append(models, ModelSummary{
-			ModelName:          name,
-			AvgLatencyMs:       avgLatency,
+			models = append(models, ModelSummary{
+				ModelName:          name,
+				AvgTtftMs:          avgTtftMs(total),
+				AvgLatencyMs:       avgLatency,
 			SuccessRate:        math.Round(successRate*100) / 100,
 			AvgTps:             math.Round(avgTps*100) / 100,
 			RecentSuccessRates: recentSuccessRates(modelBuckets[name], 3),
@@ -361,6 +364,10 @@ func avg(sum int64, count int64) int64 {
 		return 0
 	}
 	return sum / count
+}
+
+func avgTtftMs(value counters) int64 {
+	return avg(value.ttftSumMs, value.ttftCount)
 }
 
 func successRate(value counters) float64 {

@@ -123,6 +123,8 @@ const createGroupSchema = (t: Translate) =>
   z.object({
     GroupRatio: createJsonStringField(t),
     TopupGroupRatio: createJsonStringField(t),
+    UpstreamWarningRatio: createJsonStringField(t),
+    UpstreamWarningAutoDisable: createJsonStringField(t),
     UserUsableGroups: createJsonStringField(t),
     GroupGroupRatio: createJsonStringField(t),
     AutoGroups: createJsonStringField(t, {
@@ -203,6 +205,12 @@ export function RatioSettingsCard({
   const groupNormalizedDefaults = useRef({
     GroupRatio: normalizeJsonString(groupDefaults.GroupRatio),
     TopupGroupRatio: normalizeJsonString(groupDefaults.TopupGroupRatio),
+    UpstreamWarningRatio: normalizeJsonString(
+      groupDefaults.UpstreamWarningRatio
+    ),
+    UpstreamWarningAutoDisable: normalizeJsonString(
+      groupDefaults.UpstreamWarningAutoDisable
+    ),
     UserUsableGroups: normalizeJsonString(groupDefaults.UserUsableGroups),
     GroupGroupRatio: normalizeJsonString(groupDefaults.GroupGroupRatio),
     AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
@@ -242,6 +250,12 @@ export function RatioSettingsCard({
       ...groupDefaults,
       GroupRatio: formatJsonForTextarea(groupDefaults.GroupRatio),
       TopupGroupRatio: formatJsonForTextarea(groupDefaults.TopupGroupRatio),
+      UpstreamWarningRatio: formatJsonForTextarea(
+        groupDefaults.UpstreamWarningRatio
+      ),
+      UpstreamWarningAutoDisable: formatJsonForTextarea(
+        groupDefaults.UpstreamWarningAutoDisable
+      ),
       UserUsableGroups: formatJsonForTextarea(groupDefaults.UserUsableGroups),
       GroupGroupRatio: formatJsonForTextarea(groupDefaults.GroupGroupRatio),
       AutoGroups: formatJsonForTextarea(groupDefaults.AutoGroups),
@@ -290,6 +304,12 @@ export function RatioSettingsCard({
     groupNormalizedDefaults.current = {
       GroupRatio: normalizeJsonString(groupDefaults.GroupRatio),
       TopupGroupRatio: normalizeJsonString(groupDefaults.TopupGroupRatio),
+      UpstreamWarningRatio: normalizeJsonString(
+        groupDefaults.UpstreamWarningRatio
+      ),
+      UpstreamWarningAutoDisable: normalizeJsonString(
+        groupDefaults.UpstreamWarningAutoDisable
+      ),
       UserUsableGroups: normalizeJsonString(groupDefaults.UserUsableGroups),
       GroupGroupRatio: normalizeJsonString(groupDefaults.GroupGroupRatio),
       AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
@@ -304,6 +324,12 @@ export function RatioSettingsCard({
       ...groupDefaults,
       GroupRatio: formatJsonForTextarea(groupDefaults.GroupRatio),
       TopupGroupRatio: formatJsonForTextarea(groupDefaults.TopupGroupRatio),
+      UpstreamWarningRatio: formatJsonForTextarea(
+        groupDefaults.UpstreamWarningRatio
+      ),
+      UpstreamWarningAutoDisable: formatJsonForTextarea(
+        groupDefaults.UpstreamWarningAutoDisable
+      ),
       UserUsableGroups: formatJsonForTextarea(groupDefaults.UserUsableGroups),
       GroupGroupRatio: formatJsonForTextarea(groupDefaults.GroupGroupRatio),
       AutoGroups: formatJsonForTextarea(groupDefaults.AutoGroups),
@@ -361,6 +387,10 @@ export function RatioSettingsCard({
       const normalized = {
         GroupRatio: normalizeJsonString(values.GroupRatio),
         TopupGroupRatio: normalizeJsonString(values.TopupGroupRatio),
+        UpstreamWarningRatio: normalizeJsonString(values.UpstreamWarningRatio),
+        UpstreamWarningAutoDisable: normalizeJsonString(
+          values.UpstreamWarningAutoDisable
+        ),
         UserUsableGroups: normalizeJsonString(values.UserUsableGroups),
         GroupGroupRatio: normalizeJsonString(values.GroupGroupRatio),
         AutoGroups: normalizeJsonString(values.AutoGroups),
@@ -373,6 +403,9 @@ export function RatioSettingsCard({
 
       // Map form field names to API keys (most are 1:1, except GroupSpecialUsableGroup)
       const apiKeyMap: Record<string, string> = {
+        UpstreamWarningRatio: 'group_ratio_setting.upstream_warning_ratio',
+        UpstreamWarningAutoDisable:
+          'group_ratio_setting.upstream_warning_auto_disable',
         GroupSpecialUsableGroup:
           'group_ratio_setting.group_special_usable_group',
       }

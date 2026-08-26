@@ -220,6 +220,8 @@ export type ModelSettings = {
   'tool_price_setting.prices': string
   TopupGroupRatio: string
   GroupRatio: string
+  'group_ratio_setting.upstream_warning_ratio': string
+  'group_ratio_setting.upstream_warning_auto_disable': string
   UserUsableGroups: string
   GroupGroupRatio: string
   AutoGroups: string
@@ -285,6 +287,8 @@ export type BillingSettings = {
   'tool_price_setting.prices': string
   TopupGroupRatio: string
   GroupRatio: string
+  'group_ratio_setting.upstream_warning_ratio': string
+  'group_ratio_setting.upstream_warning_auto_disable': string
   UserUsableGroups: string
   GroupGroupRatio: string
   AutoGroups: string

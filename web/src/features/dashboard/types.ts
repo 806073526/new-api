@@ -165,6 +165,43 @@ export interface ProcessedFlowData {
 }
 
 // ============================================================================
+// Channel Availability Types
+// ============================================================================
+
+export type ChannelAvailabilityState = 'available' | 'unavailable' | 'unknown'
+
+export interface ChannelAvailabilityModel {
+  model: string
+  state: ChannelAvailabilityState
+  reason: string
+  latency_ms?: number
+  source: string
+  observed_at?: number
+}
+
+export interface ChannelAvailabilityGroup {
+  group: string
+  models: ChannelAvailabilityModel[]
+}
+
+export interface ChannelAvailabilitySnapshot {
+  groups: ChannelAvailabilityGroup[]
+  freshness_seconds: number
+  generated_at: number
+}
+
+export type ChannelAvailabilityTaskStatus =
+  | 'pending'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+
+export interface ChannelAvailabilityTask {
+  task_id: string
+  status: ChannelAvailabilityTaskStatus
+}
+
+// ============================================================================
 // Uptime Monitoring Types
 // ============================================================================
 

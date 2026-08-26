@@ -118,6 +118,7 @@ func runChannelModelHealthProbeTask(ctx context.Context) (channelModelHealthProb
 
 		probeTimeout := channelModelHealthProbeTimeout(config)
 		probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+		probeStartedAt := time.Now()
 		result := testChannelWithOptions(
 			probeCtx,
 			channel,
@@ -133,12 +134,28 @@ func runChannelModelHealthProbeTask(ctx context.Context) (channelModelHealthProb
 		}
 		summary.Probed++
 		if result.localErr == nil && result.newAPIError == nil {
-			model.ObserveChannelModelSuccess(candidate.ChannelId, candidate.Group, candidate.Model, common.GetTimestamp())
+			model.ObserveChannelModelSuccessWithMetadata(
+				candidate.ChannelId,
+				candidate.Group,
+				candidate.Model,
+				common.GetTimestamp(),
+				time.Since(probeStartedAt).Milliseconds(),
+				model.ChannelAvailabilitySourceActiveTest,
+			)
 			summary.Succeeded++
 			continue
 		}
 		if result.newAPIError != nil && model.ShouldObserveChannelModelFailure(result.newAPIError) {
-			model.ObserveChannelModelFailure(candidate.ChannelId, candidate.Group, candidate.Model, result.newAPIError, common.GetTimestamp(), config)
+			model.ObserveChannelModelFailureWithMetadata(
+				candidate.ChannelId,
+				candidate.Group,
+				candidate.Model,
+				result.newAPIError,
+				common.GetTimestamp(),
+				config,
+				time.Since(probeStartedAt).Milliseconds(),
+				model.ChannelAvailabilitySourceActiveTest,
+			)
 			summary.Failed++
 			continue
 		}
@@ -184,8 +201,9 @@ func (channelTestHandler) NewPayload() any { return nil }
 // Notify=true to reproduce the legacy manual behavior (test every channel and
 // notify root on completion).
 type channelTestTaskPayload struct {
-	Mode   string `json:"mode,omitempty"`
-	Notify bool   `json:"notify,omitempty"`
+	Mode      string `json:"mode,omitempty"`
+	Notify    bool   `json:"notify,omitempty"`
+	AllModels bool   `json:"all_models,omitempty"`
 }
 
 func (channelTestHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
@@ -194,7 +212,7 @@ func (channelTestHandler) Run(ctx context.Context, task *model.SystemTask, runne
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
 		return
 	}
-	summary, err := runChannelTestTask(ctx, payload.Mode, payload.Notify, service.NewSystemTaskProgressReporter(task, runnerID))
+	summary, err := runChannelTestTaskWithOptions(ctx, payload.Mode, payload.Notify, payload.AllModels, service.NewSystemTaskProgressReporter(task, runnerID))
 	if err != nil {
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
 		return

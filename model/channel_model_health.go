@@ -44,23 +44,25 @@ func DefaultChannelModelHealthConfig() ChannelModelHealthConfig {
 }
 
 type ChannelModelHealth struct {
-	Id                 int64                   `json:"id" gorm:"primaryKey"`
-	ChannelId          int                     `json:"channel_id" gorm:"uniqueIndex:uniq_channel_model_health_key,priority:1"`
-	Group              string                  `json:"group" gorm:"column:group;type:varchar(255);uniqueIndex:uniq_channel_model_health_key,priority:2"`
-	Model              string                  `json:"model" gorm:"type:varchar(255);uniqueIndex:uniq_channel_model_health_key,priority:3"`
-	State              ChannelModelHealthState `json:"state" gorm:"type:varchar(16);index"`
-	FailureCount       int                     `json:"failure_count"`
-	WindowStartedAt    int64                   `json:"window_started_at" gorm:"bigint"`
-	OpenCount          int                     `json:"open_count"`
-	CooldownUntil      int64                   `json:"cooldown_until" gorm:"bigint;index"`
-	HalfOpenLeaseUntil int64                   `json:"half_open_lease_until" gorm:"bigint"`
-	LastFailureAt      int64                   `json:"last_failure_at" gorm:"bigint"`
-	LastSuccessAt      int64                   `json:"last_success_at" gorm:"bigint"`
-	LastStatusCode     int                     `json:"last_status_code"`
-	LastErrorCode      string                  `json:"last_error_code" gorm:"type:varchar(128)"`
-	LastError          string                  `json:"last_error" gorm:"type:text"`
-	CreatedAt          int64                   `json:"created_at" gorm:"bigint"`
-	UpdatedAt          int64                   `json:"updated_at" gorm:"bigint;index"`
+	Id                    int64                   `json:"id" gorm:"primaryKey"`
+	ChannelId             int                     `json:"channel_id" gorm:"uniqueIndex:uniq_channel_model_health_key,priority:1"`
+	Group                 string                  `json:"group" gorm:"column:group;type:varchar(255);uniqueIndex:uniq_channel_model_health_key,priority:2"`
+	Model                 string                  `json:"model" gorm:"type:varchar(255);uniqueIndex:uniq_channel_model_health_key,priority:3"`
+	State                 ChannelModelHealthState `json:"state" gorm:"type:varchar(16);index"`
+	FailureCount          int                     `json:"failure_count"`
+	WindowStartedAt       int64                   `json:"window_started_at" gorm:"bigint"`
+	OpenCount             int                     `json:"open_count"`
+	CooldownUntil         int64                   `json:"cooldown_until" gorm:"bigint;index"`
+	HalfOpenLeaseUntil    int64                   `json:"half_open_lease_until" gorm:"bigint"`
+	LastFailureAt         int64                   `json:"last_failure_at" gorm:"bigint"`
+	LastSuccessAt         int64                   `json:"last_success_at" gorm:"bigint"`
+	LastStatusCode        int                     `json:"last_status_code"`
+	LastErrorCode         string                  `json:"last_error_code" gorm:"type:varchar(128)"`
+	LastError             string                  `json:"last_error" gorm:"type:text"`
+	LastLatencyMs         int64                   `json:"last_latency_ms"`
+	LastObservationSource string                  `json:"last_observation_source" gorm:"type:varchar(32)"`
+	CreatedAt             int64                   `json:"created_at" gorm:"bigint"`
+	UpdatedAt             int64                   `json:"updated_at" gorm:"bigint;index"`
 }
 
 type ChannelModelHealthView struct {
@@ -173,12 +175,17 @@ func (health *ChannelModelHealth) TryAcquire(now int64, config ChannelModelHealt
 }
 
 func (health *ChannelModelHealth) ObserveFailure(now int64, statusCode int, errorCode, message string, config ChannelModelHealthConfig) {
+	health.ObserveFailureWithMetadata(now, statusCode, errorCode, message, config, 0, "unknown")
+}
+
+func (health *ChannelModelHealth) ObserveFailureWithMetadata(now int64, statusCode int, errorCode, message string, config ChannelModelHealthConfig, latencyMs int64, source string) {
 	if health == nil {
 		return
 	}
 	if health.State == ChannelModelHealthHalfOpen || health.State == ChannelModelHealthOpen {
 		health.open(now, config)
 		health.setLastError(now, statusCode, errorCode, message)
+		health.setObservationMetadata(latencyMs, source)
 		return
 	}
 
@@ -190,6 +197,7 @@ func (health *ChannelModelHealth) ObserveFailure(now int64, statusCode int, erro
 	health.FailureCount++
 	health.LastFailureAt = now
 	health.setLastError(now, statusCode, errorCode, message)
+	health.setObservationMetadata(latencyMs, source)
 	threshold := config.FailureThreshold
 	if threshold <= 0 {
 		threshold = 3
@@ -202,6 +210,10 @@ func (health *ChannelModelHealth) ObserveFailure(now int64, statusCode int, erro
 }
 
 func (health *ChannelModelHealth) ObserveSuccess(now int64) {
+	health.ObserveSuccessWithMetadata(now, 0, "unknown")
+}
+
+func (health *ChannelModelHealth) ObserveSuccessWithMetadata(now, latencyMs int64, source string) {
 	if health == nil {
 		return
 	}
@@ -211,7 +223,20 @@ func (health *ChannelModelHealth) ObserveSuccess(now int64) {
 	health.CooldownUntil = 0
 	health.HalfOpenLeaseUntil = 0
 	health.LastSuccessAt = now
+	health.setObservationMetadata(latencyMs, source)
 	health.UpdatedAt = now
+}
+
+func (health *ChannelModelHealth) setObservationMetadata(latencyMs int64, source string) {
+	if latencyMs < 0 {
+		latencyMs = 0
+	}
+	health.LastLatencyMs = latencyMs
+	source = strings.TrimSpace(source)
+	if source == "" {
+		source = "unknown"
+	}
+	health.LastObservationSource = source
 }
 
 func (health *ChannelModelHealth) open(now int64, config ChannelModelHealthConfig) {
@@ -542,6 +567,9 @@ func RecoverChannelModelHealth(channelId int, model string, now int64) (int, err
 }
 
 func IsChannelModelRoutable(channelId int, group, model string, now int64) bool {
+	if IsChannelModelManuallyDisabled(channelId, model) {
+		return false
+	}
 	if !IsChannelModelHealthEnabled() || IsChannelModelHealthExcluded(channelId, model) {
 		return true
 	}
@@ -587,38 +615,50 @@ func TryAcquireChannelModel(channelId int, group, model string, now int64, confi
 }
 
 func ObserveChannelModelFailure(channelId int, group, model string, err *types.NewAPIError, now int64, config ChannelModelHealthConfig) {
-	if !IsChannelModelHealthEnabled() || IsChannelModelHealthExcluded(channelId, model) || err == nil {
+	ObserveChannelModelFailureWithMetadata(channelId, group, model, err, now, config, 0, "unknown")
+}
+
+func ObserveChannelModelFailureWithMetadata(channelId int, group, model string, err *types.NewAPIError, now int64, config ChannelModelHealthConfig, latencyMs int64, source string) {
+	if err == nil {
 		return
 	}
 	key := normalizeChannelModelHealthKey(channelId, group, model)
+	if key.ChannelId <= 0 || key.Group == "" || key.Model == "" {
+		return
+	}
 	channelModelHealthCache.Lock()
 	health := channelModelHealthCache.items[key]
 	if health == nil {
 		health = &ChannelModelHealth{ChannelId: channelId, Group: key.Group, Model: key.Model, State: ChannelModelHealthClosed}
 		channelModelHealthCache.items[key] = health
 	}
-	health.ObserveFailure(now, err.StatusCode, string(err.GetErrorCode()), err.Error(), config)
+	health.ObserveFailureWithMetadata(now, err.StatusCode, string(err.GetErrorCode()), err.Error(), config, latencyMs, source)
 	snapshot := *health
 	channelModelHealthCache.Unlock()
 	PersistChannelModelHealth(&snapshot)
 }
 
 func ObserveChannelModelSuccess(channelId int, group, model string, now int64) {
-	if !IsChannelModelHealthEnabled() || IsChannelModelHealthExcluded(channelId, model) {
+	ObserveChannelModelSuccessWithMetadata(channelId, group, model, now, 0, "unknown")
+}
+
+func ObserveChannelModelSuccessWithMetadata(channelId int, group, model string, now, latencyMs int64, source string) {
+	key := normalizeChannelModelHealthKey(channelId, group, model)
+	if key.ChannelId <= 0 || key.Group == "" || key.Model == "" {
 		return
 	}
-	key := normalizeChannelModelHealthKey(channelId, group, model)
 	channelModelHealthCache.Lock()
 	health := channelModelHealthCache.items[key]
 	if health == nil {
-		channelModelHealthCache.Unlock()
-		return
+		health = &ChannelModelHealth{
+			ChannelId: key.ChannelId,
+			Group:     key.Group,
+			Model:     key.Model,
+			State:     ChannelModelHealthClosed,
+		}
+		channelModelHealthCache.items[key] = health
 	}
-	if health.State == ChannelModelHealthClosed && health.FailureCount == 0 {
-		channelModelHealthCache.Unlock()
-		return
-	}
-	health.ObserveSuccess(now)
+	health.ObserveSuccessWithMetadata(now, latencyMs, source)
 	snapshot := *health
 	channelModelHealthCache.Unlock()
 	PersistChannelModelHealth(&snapshot)
@@ -988,18 +1028,20 @@ func PersistChannelModelHealth(health *ChannelModelHealth) {
 	}
 	health.UpdatedAt = common.GetTimestamp()
 	updates := map[string]interface{}{
-		"state":                 health.State,
-		"failure_count":         health.FailureCount,
-		"window_started_at":     health.WindowStartedAt,
-		"open_count":            health.OpenCount,
-		"cooldown_until":        health.CooldownUntil,
-		"half_open_lease_until": health.HalfOpenLeaseUntil,
-		"last_failure_at":       health.LastFailureAt,
-		"last_success_at":       health.LastSuccessAt,
-		"last_status_code":      health.LastStatusCode,
-		"last_error_code":       health.LastErrorCode,
-		"last_error":            health.LastError,
-		"updated_at":            health.UpdatedAt,
+		"state":                   health.State,
+		"failure_count":           health.FailureCount,
+		"window_started_at":       health.WindowStartedAt,
+		"open_count":              health.OpenCount,
+		"cooldown_until":          health.CooldownUntil,
+		"half_open_lease_until":   health.HalfOpenLeaseUntil,
+		"last_failure_at":         health.LastFailureAt,
+		"last_success_at":         health.LastSuccessAt,
+		"last_status_code":        health.LastStatusCode,
+		"last_error_code":         health.LastErrorCode,
+		"last_error":              health.LastError,
+		"last_latency_ms":         health.LastLatencyMs,
+		"last_observation_source": health.LastObservationSource,
+		"updated_at":              health.UpdatedAt,
 	}
 	_ = DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{

@@ -67,6 +67,8 @@ import { GroupSpecialUsableRulesEditor } from './group-special-usable-editor'
 type GroupFormValues = {
   GroupRatio: string
   TopupGroupRatio: string
+  UpstreamWarningRatio: string
+  UpstreamWarningAutoDisable: string
   UserUsableGroups: string
   GroupGroupRatio: string
   AutoGroups: string
@@ -107,6 +109,10 @@ export const GroupRatioForm = memo(function GroupRatioForm({
   const watchedGroupRatio = form.watch('GroupRatio')
   const watchedUserUsableGroups = form.watch('UserUsableGroups')
   const watchedTopupGroupRatio = form.watch('TopupGroupRatio')
+  const watchedUpstreamWarningRatio = form.watch('UpstreamWarningRatio')
+  const watchedUpstreamWarningAutoDisable = form.watch(
+    'UpstreamWarningAutoDisable'
+  )
   const groupNames = useMemo(() => {
     const ratioMap = safeJsonParse<Record<string, number>>(watchedGroupRatio, {
       fallback: {},
@@ -125,9 +131,27 @@ export const GroupRatioForm = memo(function GroupRatioForm({
         ...Object.keys(ratioMap),
         ...Object.keys(usableMap),
         ...Object.keys(topupMap),
+        ...Object.keys(
+          safeJsonParse<Record<string, number>>(watchedUpstreamWarningRatio, {
+            fallback: {},
+            silent: true,
+          })
+        ),
+        ...Object.keys(
+          safeJsonParse<Record<string, boolean>>(
+            watchedUpstreamWarningAutoDisable,
+            { fallback: {}, silent: true }
+          )
+        ),
       ]),
     ]
-  }, [watchedGroupRatio, watchedUserUsableGroups, watchedTopupGroupRatio])
+  }, [
+    watchedGroupRatio,
+    watchedUserUsableGroups,
+    watchedTopupGroupRatio,
+    watchedUpstreamWarningRatio,
+    watchedUpstreamWarningAutoDisable,
+  ])
 
   return (
     <div className='space-y-6'>
@@ -169,6 +193,10 @@ export const GroupRatioForm = memo(function GroupRatioForm({
             <GroupRatioVisualEditor
               groupRatio={form.watch('GroupRatio')}
               topupGroupRatio={form.watch('TopupGroupRatio')}
+              upstreamWarningRatio={form.watch('UpstreamWarningRatio')}
+              upstreamWarningAutoDisable={form.watch(
+                'UpstreamWarningAutoDisable'
+              )}
               userUsableGroups={form.watch('UserUsableGroups')}
               groupGroupRatio={form.watch('GroupGroupRatio')}
               autoGroups={form.watch('AutoGroups')}
@@ -285,6 +313,58 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                       'Optional multiplier per user group used when calculating recharge pricing. Provide a JSON object such as'
                     )}
                     {` { "default": 1, "vip": 1.2 }`}.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='UpstreamWarningRatio'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Upstream warning ratios')}</FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                      heightClassName='h-40 min-h-40 max-h-40'
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'JSON map of group → upstream ratio threshold. Values above the threshold can disable the channel when the switch is enabled.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='UpstreamWarningAutoDisable'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Upstream warning auto-disable')}</FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                      heightClassName='h-40 min-h-40 max-h-40'
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'JSON map of group → true. When enabled for a group, a channel is disabled after its upstream ratio exceeds that group threshold.'
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

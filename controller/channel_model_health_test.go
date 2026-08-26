@@ -87,7 +87,7 @@ func TestObserveChannelModelTestResultAppliesAnEligibleFailureToAllGroups(t *tes
 			types.ErrorCodeBadResponseStatusCode,
 			http.StatusServiceUnavailable,
 		),
-	})
+	}, 0)
 
 	for _, group := range []string{"alpha", "beta"} {
 		health := model.GetChannelModelHealth(channel.Id, group, "gpt-test")

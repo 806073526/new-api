@@ -285,6 +285,23 @@ func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 	require.Equal(t, 2, userID)
 }
 
+func TestResolveChannelTestModelPrefersExplicitThenConfiguredThenFirstModel(t *testing.T) {
+	configured := "configured-model"
+	channel := &model.Channel{
+		TestModel: &configured,
+		Models:    "first-model,second-model",
+	}
+
+	assert.Equal(t, "explicit-model", resolveChannelTestModel(channel, "explicit-model"))
+	assert.Equal(t, "configured-model", resolveChannelTestModel(channel, ""))
+
+	channel.TestModel = nil
+	assert.Equal(t, "first-model", resolveChannelTestModel(channel, ""))
+
+	channel.Models = ""
+	assert.Equal(t, "gpt-4o-mini", resolveChannelTestModel(channel, ""))
+}
+
 func TestSelectChannelsForAutomaticTestPassiveRecoveryOnlyUsesAutoDisabled(t *testing.T) {
 	channels := []*model.Channel{
 		{Id: 1, Status: common.ChannelStatusEnabled},

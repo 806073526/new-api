@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -165,8 +167,9 @@ func IngestUpstreamHubMetrics(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	warningRatios, autoDisable := ratio_setting.GetUpstreamWarningSettings()
 	for _, input := range request.Items {
-		if input.ChannelID <= 0 || input.UpstreamRatio < 0 {
+		if input.ChannelID <= 0 || input.UpstreamRatio < 0 || math.IsNaN(input.UpstreamRatio) || math.IsInf(input.UpstreamRatio, 0) {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid upstream metric"})
 			return
 		}
@@ -183,8 +186,37 @@ func IngestUpstreamHubMetrics(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
+		channel, err := model.GetChannelById(input.ChannelID, true)
+		if err == nil && channel.Status == common.ChannelStatusEnabled && shouldAutoDisableUpstreamRatio(channel, input.UpstreamRatio, warningRatios, autoDisable) {
+			model.UpdateChannelStatus(
+				input.ChannelID,
+				"",
+				common.ChannelStatusAutoDisabled,
+				fmt.Sprintf("upstream ratio %.6g exceeded configured warning ratio", input.UpstreamRatio),
+			)
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"updated": len(request.Items)}})
+}
+
+func shouldAutoDisableUpstreamRatio(channel *model.Channel, upstreamRatio float64, warningRatios map[string]float64, autoDisable map[string]bool) bool {
+	if channel == nil || upstreamRatio <= 0 || math.IsNaN(upstreamRatio) || math.IsInf(upstreamRatio, 0) {
+		return false
+	}
+	for _, group := range channel.GetGroups() {
+		group = strings.TrimSpace(group)
+		if !autoDisable[group] {
+			continue
+		}
+		warningRatio, ok := warningRatios[group]
+		if !ok || warningRatio <= 0 || math.IsNaN(warningRatio) || math.IsInf(warningRatio, 0) {
+			continue
+		}
+		if upstreamRatio > warningRatio {
+			return true
+		}
+	}
+	return false
 }
 
 func ApplyUpstreamHubPriorities(c *gin.Context) {

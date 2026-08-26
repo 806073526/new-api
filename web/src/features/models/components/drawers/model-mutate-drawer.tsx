@@ -316,6 +316,8 @@ export function ModelMutateDrawer({
       'tool_price_setting.prices': '{}',
       TopupGroupRatio: '',
       GroupRatio: '',
+      'group_ratio_setting.upstream_warning_ratio': '{}',
+      'group_ratio_setting.upstream_warning_auto_disable': '{}',
       UserUsableGroups: '',
       GroupGroupRatio: '',
       AutoGroups: '',

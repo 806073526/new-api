@@ -55,7 +55,7 @@ func shouldObserveChannelModelTest(c *gin.Context, testModel string) bool {
 	return err == nil && observeHealth
 }
 
-func observeChannelModelTestResult(channel *model.Channel, testModel string, result testResult) {
+func observeChannelModelTestResult(channel *model.Channel, testModel string, result testResult, latencyMs int64) {
 	if channel == nil {
 		return
 	}
@@ -63,32 +63,38 @@ func observeChannelModelTestResult(channel *model.Channel, testModel string, res
 	if testModel == "" {
 		return
 	}
-
 	groups, err := model.GetChannelModelHealthGroups(channel.Id, testModel)
 	if err != nil {
 		common.SysError(fmt.Sprintf("failed to get channel model health groups: channel_id=%d model=%s err=%v", channel.Id, testModel, err))
 		return
 	}
+	for _, group := range groups {
+		observeChannelModelTestResultForGroup(channel, group, testModel, result, latencyMs)
+	}
+}
+
+func observeChannelModelTestResultForGroup(channel *model.Channel, group, testModel string, result testResult, latencyMs int64) {
+	if channel == nil || strings.TrimSpace(group) == "" || strings.TrimSpace(testModel) == "" {
+		return
+	}
 	now := common.GetTimestamp()
 	if result.localErr == nil && result.newAPIError == nil {
-		for _, group := range groups {
-			model.ObserveChannelModelSuccess(channel.Id, group, testModel, now)
-		}
+		model.ObserveChannelModelSuccessWithMetadata(channel.Id, group, testModel, now, latencyMs, model.ChannelAvailabilitySourceActiveTest)
 		return
 	}
 	if !model.ShouldObserveChannelModelFailure(result.newAPIError) {
 		return
 	}
-	for _, group := range groups {
-		model.ObserveChannelModelFailure(
-			channel.Id,
-			group,
-			testModel,
-			result.newAPIError,
-			now,
-			model.GetChannelModelHealthConfig(),
-		)
-	}
+	model.ObserveChannelModelFailureWithMetadata(
+		channel.Id,
+		group,
+		testModel,
+		result.newAPIError,
+		now,
+		model.GetChannelModelHealthConfig(),
+		latencyMs,
+		model.ChannelAvailabilitySourceActiveTest,
+	)
 }
 
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
@@ -103,6 +109,26 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		return string(constant.EndpointTypeOpenAIResponse)
 	}
 	return normalized
+}
+
+func resolveChannelTestModel(channel *model.Channel, requested string) string {
+	testModel := strings.TrimSpace(requested)
+	if testModel != "" {
+		return testModel
+	}
+	if channel != nil && channel.TestModel != nil {
+		if configured := strings.TrimSpace(*channel.TestModel); configured != "" {
+			return configured
+		}
+	}
+	if channel != nil {
+		for _, configured := range channel.GetModels() {
+			if configured = strings.TrimSpace(configured); configured != "" {
+				return configured
+			}
+		}
+	}
+	return "gpt-4o-mini"
 }
 
 func resolveChannelTestUserID(c *gin.Context) (int, error) {
@@ -151,20 +177,7 @@ func testChannelWithOptions(ctx context.Context, channel *model.Channel, testUse
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 
-	testModel = strings.TrimSpace(testModel)
-	if testModel == "" {
-		if channel.TestModel != nil && *channel.TestModel != "" {
-			testModel = strings.TrimSpace(*channel.TestModel)
-		} else {
-			models := channel.GetModels()
-			if len(models) > 0 {
-				testModel = strings.TrimSpace(models[0])
-			}
-			if testModel == "" {
-				testModel = "gpt-4o-mini"
-			}
-		}
-	}
+	testModel = resolveChannelTestModel(channel, testModel)
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
 
@@ -919,8 +932,10 @@ func TestChannel(c *gin.Context) {
 		requestCtx = c.Request.Context()
 	}
 	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
+	tok := time.Now()
+	milliseconds := tok.Sub(tik).Milliseconds()
 	if observeHealth {
-		observeChannelModelTestResult(channel, testModel, result)
+		observeChannelModelTestResult(channel, testModel, result, milliseconds)
 	}
 	if result.localErr != nil {
 		resp := gin.H{
@@ -934,8 +949,6 @@ func TestChannel(c *gin.Context) {
 		c.JSON(http.StatusOK, resp)
 		return
 	}
-	tok := time.Now()
-	milliseconds := tok.Sub(tik).Milliseconds()
 	go channel.UpdateResponseTime(milliseconds)
 	consumedTime := float64(milliseconds) / 1000.0
 	if result.newAPIError != nil {
@@ -988,12 +1001,14 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 		}
 		isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 		tik := time.Now()
-		result := testChannel(ctx, channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+		testModel := resolveChannelTestModel(channel, "")
+		result := testChannel(ctx, channel, testUserID, testModel, "", shouldUseStreamForAutomaticChannelTest(channel))
 		tok := time.Now()
 		milliseconds := tok.Sub(tik).Milliseconds()
 		if ctx != nil && ctx.Err() != nil {
 			break
 		}
+		observeChannelModelTestResult(channel, testModel, result, milliseconds)
 
 		summary.Tested++
 
@@ -1050,6 +1065,66 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 	return summary
 }
 
+func performChannelModelTests(ctx context.Context, targets []model.ChannelModelTestTarget, channels []*model.Channel, testUserID int, report func(processed, total int)) channelTestSummary {
+	summary := channelTestSummary{}
+	channelByID := make(map[int]*model.Channel, len(channels))
+	for _, channel := range channels {
+		if channel != nil {
+			channelByID[channel.Id] = channel
+		}
+	}
+
+	for index, target := range targets {
+		if ctx != nil && ctx.Err() != nil {
+			break
+		}
+		if report != nil {
+			report(index, len(targets))
+		}
+		channel := channelByID[target.ChannelId]
+		if channel == nil || channel.Status == common.ChannelStatusManuallyDisabled {
+			continue
+		}
+
+		tik := time.Now()
+		result := testChannelWithOptions(
+			ctx,
+			channel,
+			testUserID,
+			target.Model,
+			"",
+			shouldUseStreamForAutomaticChannelTest(channel),
+			channelTestOptions{recordConsumeLog: false, group: target.Group},
+		)
+		if ctx != nil && ctx.Err() != nil {
+			break
+		}
+		observeChannelModelTestResultForGroup(channel, target.Group, target.Model, result, time.Since(tik).Milliseconds())
+		summary.Tested++
+		if result.localErr == nil && result.newAPIError == nil {
+			summary.Succeeded++
+		} else {
+			summary.Failed++
+		}
+		channel.UpdateResponseTime(time.Since(tik).Milliseconds())
+		if common.RequestInterval > 0 {
+			if ctx == nil {
+				time.Sleep(common.RequestInterval)
+			} else {
+				select {
+				case <-ctx.Done():
+					return summary
+				case <-time.After(common.RequestInterval):
+				}
+			}
+		}
+	}
+	if report != nil && (ctx == nil || ctx.Err() == nil) {
+		report(len(targets), len(targets))
+	}
+	return summary
+}
+
 // runChannelTestTask runs one synchronous channel test cycle for the system task
 // runner (both the scheduled job and the manual "test all channels" trigger go
 // through here). It honors ctx cancellation so a runner that loses its lease
@@ -1059,6 +1134,10 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 // is set the root user is notified on completion. Cross-instance execution is
 // guarded by the system task per-type lock, so no process-local guard is needed.
 func runChannelTestTask(ctx context.Context, mode string, notify bool, report func(processed, total int)) (channelTestSummary, error) {
+	return runChannelTestTaskWithOptions(ctx, mode, notify, false, report)
+}
+
+func runChannelTestTaskWithOptions(ctx context.Context, mode string, notify, allModels bool, report func(processed, total int)) (channelTestSummary, error) {
 	testUserID, err := resolveChannelTestUserID(nil)
 	if err != nil {
 		return channelTestSummary{}, err
@@ -1071,6 +1150,27 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 		mode = operation_setting.GetMonitorSetting().ChannelTestMode
 	}
 	selected := selectChannelsForAutomaticTest(channels, mode)
+	if allModels {
+		targets, err := model.GetChannelModelTestTargets()
+		if err != nil {
+			return channelTestSummary{}, err
+		}
+		selectedIDs := make(map[int]struct{}, len(selected))
+		for _, channel := range selected {
+			selectedIDs[channel.Id] = struct{}{}
+		}
+		filteredTargets := targets[:0]
+		for _, target := range targets {
+			if _, ok := selectedIDs[target.ChannelId]; ok {
+				filteredTargets = append(filteredTargets, target)
+			}
+		}
+		summary := performChannelModelTests(ctx, filteredTargets, selected, testUserID, report)
+		if notify && (ctx == nil || ctx.Err() == nil) {
+			service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道模型测试已完成")
+		}
+		return summary, nil
+	}
 	allowDisable := mode != operation_setting.ChannelTestModePassiveRecovery
 	summary := performChannelTests(ctx, selected, testUserID, allowDisable, report)
 	if notify && (ctx == nil || ctx.Err() == nil) {
@@ -1098,8 +1198,9 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 // rejected so the caller does not mistake a scheduled run for this manual one.
 func TestAllChannels(c *gin.Context) {
 	task, created, err := service.EnqueueSystemTask(model.SystemTaskTypeChannelTest, channelTestTaskPayload{
-		Mode:   operation_setting.ChannelTestModeScheduledAll,
-		Notify: true,
+		Mode:      operation_setting.ChannelTestModeScheduledAll,
+		Notify:    true,
+		AllModels: true,
 	})
 	if err != nil {
 		common.ApiError(c, err)

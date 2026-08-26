@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import type {
+  ChannelAvailabilitySnapshot,
+  ChannelAvailabilityTask,
   FlowQuotaDataItem,
   QuotaDataItem,
   UptimeGroupResult,
@@ -63,6 +65,36 @@ export async function getUserQuotaDataByUsers(params: {
     '/api/data/users',
     { params }
   )
+  return res.data
+}
+
+export async function getChannelAvailability() {
+  const res = await api.get<{
+    success: boolean
+    message?: string
+    data?: ChannelAvailabilitySnapshot
+  }>('/api/channel/availability')
+  return res.data
+}
+
+export async function startChannelAvailabilityTest() {
+  const res = await api.post<{
+    success: boolean
+    message?: string
+    data?: ChannelAvailabilityTask
+  }>('/api/channel/availability/test', null, {
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  })
+  return res.data
+}
+
+export async function getChannelAvailabilityTestStatus() {
+  const res = await api.get<{
+    success: boolean
+    message?: string
+    data?: ChannelAvailabilityTask | null
+  }>('/api/channel/availability/test/status')
   return res.data
 }
 

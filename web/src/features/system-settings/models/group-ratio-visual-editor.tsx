@@ -74,12 +74,15 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 
 import { safeJsonParse } from '../utils/json-parser'
 
 type GroupRatioVisualEditorProps = {
   groupRatio: string
   topupGroupRatio: string
+  upstreamWarningRatio: string
+  upstreamWarningAutoDisable: string
   userUsableGroups: string
   groupGroupRatio: string
   autoGroups: string
@@ -93,6 +96,8 @@ type GroupPricingRow = {
   name: string
   ratio: string
   topupRatio: string
+  upstreamWarningRatio: string
+  upstreamWarningAutoDisable: boolean
   selectable: boolean
   description: string
 }
@@ -143,15 +148,24 @@ function parseNestedRatioMap(
 function buildGroupPricingRows(
   groupRatio: string,
   userUsableGroups: string,
-  topupGroupRatio: string
+  topupGroupRatio: string,
+  upstreamWarningRatio: string,
+  upstreamWarningAutoDisable: string
 ): GroupPricingRow[] {
   const ratioMap = parseRatioMap(groupRatio)
   const usableMap = parseUsableMap(userUsableGroups)
   const topupMap = parseRatioMap(topupGroupRatio)
+  const warningMap = parseRatioMap(upstreamWarningRatio)
+  const autoDisableMap = safeJsonParse<Record<string, boolean>>(
+    upstreamWarningAutoDisable,
+    { fallback: {}, silent: true }
+  )
   const names = new Set([
     ...Object.keys(ratioMap),
     ...Object.keys(usableMap),
     ...Object.keys(topupMap),
+    ...Object.keys(warningMap),
+    ...Object.keys(autoDisableMap),
   ])
 
   return [...names].map((name) => ({
@@ -159,6 +173,10 @@ function buildGroupPricingRows(
     name,
     ratio: String(normalizeRatio(ratioMap[name])),
     topupRatio: Object.hasOwn(topupMap, name) ? String(topupMap[name]) : '',
+    upstreamWarningRatio: Object.hasOwn(warningMap, name)
+      ? String(warningMap[name])
+      : '',
+    upstreamWarningAutoDisable: autoDisableMap[name] === true,
     selectable: Object.hasOwn(usableMap, name),
     description: String(usableMap[name] ?? ''),
   }))
@@ -168,6 +186,8 @@ function serializeGroupPricingRows(rows: GroupPricingRow[]) {
   const groupRatio: Record<string, number> = {}
   const userUsableGroups: Record<string, string> = {}
   const topupGroupRatio: Record<string, number> = {}
+  const upstreamWarningRatio: Record<string, number> = {}
+  const upstreamWarningAutoDisable: Record<string, boolean> = {}
 
   for (const row of rows) {
     const name = row.name.trim()
@@ -180,12 +200,25 @@ function serializeGroupPricingRows(rows: GroupPricingRow[]) {
     if (topup !== '' && Number.isFinite(Number(topup))) {
       topupGroupRatio[name] = Number(topup)
     }
+    const warningRatio = row.upstreamWarningRatio.trim()
+    if (warningRatio !== '' && Number.isFinite(Number(warningRatio))) {
+      upstreamWarningRatio[name] = Number(warningRatio)
+    }
+    if (row.upstreamWarningAutoDisable) {
+      upstreamWarningAutoDisable[name] = true
+    }
   }
 
   return {
     GroupRatio: JSON.stringify(groupRatio, null, 2),
     UserUsableGroups: JSON.stringify(userUsableGroups, null, 2),
     TopupGroupRatio: JSON.stringify(topupGroupRatio, null, 2),
+    UpstreamWarningRatio: JSON.stringify(upstreamWarningRatio, null, 2),
+    UpstreamWarningAutoDisable: JSON.stringify(
+      upstreamWarningAutoDisable,
+      null,
+      2
+    ),
   }
 }
 
@@ -195,18 +228,30 @@ function groupPricingSignature(rows: GroupPricingRow[]): string {
     groupRatio: parseRatioMap(serialized.GroupRatio),
     userUsableGroups: parseUsableMap(serialized.UserUsableGroups),
     topupGroupRatio: parseRatioMap(serialized.TopupGroupRatio),
+    upstreamWarningRatio: parseRatioMap(serialized.UpstreamWarningRatio),
+    upstreamWarningAutoDisable: safeJsonParse<Record<string, boolean>>(
+      serialized.UpstreamWarningAutoDisable,
+      { fallback: {}, silent: true }
+    ),
   })
 }
 
 function sourceGroupPricingSignature(
   groupRatio: string,
   userUsableGroups: string,
-  topupGroupRatio: string
+  topupGroupRatio: string,
+  upstreamWarningRatio: string,
+  upstreamWarningAutoDisable: string
 ): string {
   return JSON.stringify({
     groupRatio: parseRatioMap(groupRatio),
     userUsableGroups: parseUsableMap(userUsableGroups),
     topupGroupRatio: parseRatioMap(topupGroupRatio),
+    upstreamWarningRatio: parseRatioMap(upstreamWarningRatio),
+    upstreamWarningAutoDisable: safeJsonParse<Record<string, boolean>>(
+      upstreamWarningAutoDisable,
+      { fallback: {}, silent: true }
+    ),
   })
 }
 
@@ -262,6 +307,8 @@ function GroupNameSelect(props: GroupNameSelectProps) {
 export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
   groupRatio,
   topupGroupRatio,
+  upstreamWarningRatio,
+  upstreamWarningAutoDisable,
   userUsableGroups,
   groupGroupRatio,
   autoGroups,
@@ -276,16 +323,29 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
     const ratioMap = parseRatioMap(groupRatio)
     const usableMap = parseUsableMap(userUsableGroups)
     const topupMap = parseRatioMap(topupGroupRatio)
+    const warningMap = parseRatioMap(upstreamWarningRatio)
+    const autoDisableMap = safeJsonParse<Record<string, boolean>>(
+      upstreamWarningAutoDisable,
+      { fallback: {}, silent: true }
+    )
     const names = new Set([
       ...Object.keys(ratioMap),
       ...Object.keys(usableMap),
       ...Object.keys(topupMap),
+      ...Object.keys(warningMap),
+      ...Object.keys(autoDisableMap),
     ])
     return [...names].map((name) => ({
       name,
       ratio: normalizeRatio(ratioMap[name]),
     }))
-  }, [groupRatio, userUsableGroups, topupGroupRatio])
+  }, [
+    groupRatio,
+    userUsableGroups,
+    topupGroupRatio,
+    upstreamWarningRatio,
+    upstreamWarningAutoDisable,
+  ])
 
   const registryNames = useMemo(
     () => registry.map((entry) => entry.name),
@@ -338,6 +398,8 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
         groupRatio={groupRatio}
         userUsableGroups={userUsableGroups}
         topupGroupRatio={topupGroupRatio}
+        upstreamWarningRatio={upstreamWarningRatio}
+        upstreamWarningAutoDisable={upstreamWarningAutoDisable}
         onChange={onChange}
         onShowDetail={setDetailGroup}
       />
@@ -417,6 +479,8 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
         }}
         registry={registry}
         topupGroupRatio={topupGroupRatio}
+        upstreamWarningRatio={upstreamWarningRatio}
+        upstreamWarningAutoDisable={upstreamWarningAutoDisable}
         userUsableGroups={userUsableGroups}
         groupGroupRatio={groupGroupRatio}
         autoGroups={autoGroupsList}
@@ -430,6 +494,8 @@ type GroupPricingTableProps = {
   groupRatio: string
   userUsableGroups: string
   topupGroupRatio: string
+  upstreamWarningRatio: string
+  upstreamWarningAutoDisable: string
   onChange: (field: string, value: string) => void
   onShowDetail: (name: string) => void
 }
@@ -438,19 +504,29 @@ function GroupPricingTable({
   groupRatio,
   userUsableGroups,
   topupGroupRatio,
+  upstreamWarningRatio,
+  upstreamWarningAutoDisable,
   onChange,
   onShowDetail,
 }: GroupPricingTableProps) {
   const { t } = useTranslation()
   const [rows, setRows] = useState<GroupPricingRow[]>(() =>
-    buildGroupPricingRows(groupRatio, userUsableGroups, topupGroupRatio)
+    buildGroupPricingRows(
+      groupRatio,
+      userUsableGroups,
+      topupGroupRatio,
+      upstreamWarningRatio,
+      upstreamWarningAutoDisable
+    )
   )
 
   useEffect(() => {
     const incomingSignature = sourceGroupPricingSignature(
       groupRatio,
       userUsableGroups,
-      topupGroupRatio
+      topupGroupRatio,
+      upstreamWarningRatio,
+      upstreamWarningAutoDisable
     )
     setRows((currentRows) => {
       if (groupPricingSignature(currentRows) === incomingSignature) {
@@ -459,10 +535,18 @@ function GroupPricingTable({
       return buildGroupPricingRows(
         groupRatio,
         userUsableGroups,
-        topupGroupRatio
+        topupGroupRatio,
+        upstreamWarningRatio,
+        upstreamWarningAutoDisable
       )
     })
-  }, [groupRatio, userUsableGroups, topupGroupRatio])
+  }, [
+    groupRatio,
+    userUsableGroups,
+    topupGroupRatio,
+    upstreamWarningRatio,
+    upstreamWarningAutoDisable,
+  ])
 
   const emitRows = useCallback(
     (nextRows: GroupPricingRow[]) => {
@@ -471,6 +555,11 @@ function GroupPricingTable({
       onChange('GroupRatio', serialized.GroupRatio)
       onChange('UserUsableGroups', serialized.UserUsableGroups)
       onChange('TopupGroupRatio', serialized.TopupGroupRatio)
+      onChange('UpstreamWarningRatio', serialized.UpstreamWarningRatio)
+      onChange(
+        'UpstreamWarningAutoDisable',
+        serialized.UpstreamWarningAutoDisable
+      )
     },
     [onChange]
   )
@@ -503,6 +592,8 @@ function GroupPricingTable({
         name,
         ratio: '1',
         topupRatio: '',
+        upstreamWarningRatio: '',
+        upstreamWarningAutoDisable: false,
         selectable: true,
         description: '',
       },
@@ -599,6 +690,47 @@ function GroupPricingTable({
                       updateRow(row._id, 'topupRatio', event.target.value)
                     }
                   />
+                ),
+              },
+              {
+                id: 'upstream-warning-ratio',
+                header: t('Upstream warning ratio'),
+                className: 'w-36',
+                cell: (row) => (
+                  <Input
+                    type='number'
+                    min={0}
+                    step={0.1}
+                    value={row.upstreamWarningRatio}
+                    placeholder={t('Not set')}
+                    onChange={(event) =>
+                      updateRow(
+                        row._id,
+                        'upstreamWarningRatio',
+                        event.target.value
+                      )
+                    }
+                  />
+                ),
+              },
+              {
+                id: 'upstream-warning-auto-disable',
+                header: t('Auto-disable above warning'),
+                className: 'w-36 text-center',
+                cell: (row) => (
+                  <div className='flex justify-center'>
+                    <Switch
+                      checked={row.upstreamWarningAutoDisable}
+                      onCheckedChange={(checked) =>
+                        updateRow(
+                          row._id,
+                          'upstreamWarningAutoDisable',
+                          checked
+                        )
+                      }
+                      aria-label={t('Auto-disable above warning')}
+                    />
+                  </div>
                 ),
               },
               {
@@ -1129,6 +1261,8 @@ type GroupDetailSheetProps = {
   onOpenChange: (open: boolean) => void
   registry: RegistryEntry[]
   topupGroupRatio: string
+  upstreamWarningRatio: string
+  upstreamWarningAutoDisable: string
   userUsableGroups: string
   groupGroupRatio: string
   autoGroups: string[]
@@ -1163,6 +1297,11 @@ function GroupDetailSheet(props: GroupDetailSheetProps) {
 
     const entry = props.registry.find((item) => item.name === name)
     const topupMap = parseRatioMap(props.topupGroupRatio)
+    const warningMap = parseRatioMap(props.upstreamWarningRatio)
+    const autoDisableMap = safeJsonParse<Record<string, boolean>>(
+      props.upstreamWarningAutoDisable,
+      { fallback: {}, silent: true }
+    )
     const usableMap = parseUsableMap(props.userUsableGroups)
     const overrideMap = parseNestedRatioMap(props.groupGroupRatio)
     const specialMap = safeJsonParse<Record<string, Record<string, string>>>(
@@ -1203,6 +1342,10 @@ function GroupDetailSheet(props: GroupDetailSheetProps) {
     return {
       ratio: entry?.ratio,
       topupRatio: Object.hasOwn(topupMap, name) ? String(topupMap[name]) : null,
+      upstreamWarningRatio: Object.hasOwn(warningMap, name)
+        ? String(warningMap[name])
+        : null,
+      upstreamWarningAutoDisable: autoDisableMap[name] === true,
       selectable: Object.hasOwn(usableMap, name),
       description: String(usableMap[name] ?? ''),
       incomingOverrides,
@@ -1214,6 +1357,8 @@ function GroupDetailSheet(props: GroupDetailSheetProps) {
     name,
     props.registry,
     props.topupGroupRatio,
+    props.upstreamWarningRatio,
+    props.upstreamWarningAutoDisable,
     props.userUsableGroups,
     props.groupGroupRatio,
     props.autoGroups,
@@ -1249,6 +1394,22 @@ function GroupDetailSheet(props: GroupDetailSheetProps) {
                   <dt className='text-muted-foreground'>{t('Top-up ratio')}</dt>
                   <dd className='font-medium'>
                     {detail.topupRatio ?? t('Not set')}
+                  </dd>
+                </div>
+                <div className='flex justify-between'>
+                  <dt className='text-muted-foreground'>
+                    {t('Upstream warning ratio')}
+                  </dt>
+                  <dd className='font-medium'>
+                    {detail.upstreamWarningRatio ?? t('Not set')}
+                  </dd>
+                </div>
+                <div className='flex justify-between'>
+                  <dt className='text-muted-foreground'>
+                    {t('Auto-disable above warning')}
+                  </dt>
+                  <dd className='font-medium'>
+                    {detail.upstreamWarningAutoDisable ? t('Yes') : t('No')}
                   </dd>
                 </div>
                 <div className='flex justify-between'>

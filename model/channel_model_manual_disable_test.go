@@ -45,3 +45,18 @@ func TestChannelModelManualDisableBlocksEveryGroupAndOnlyManualRecoveryRestoresI
 	assert.False(t, disable.Active)
 	assert.Equal(t, int64(300), disable.RecoveredAt)
 }
+
+func TestChannelModelManualDisableMakesModelUnroutable(t *testing.T) {
+	if DB == nil {
+		t.Skip("database is not initialized")
+	}
+	const channelID = 987655
+	const group = "default"
+	const modelName = "manual-disable-affinity-test"
+	require.NoError(t, DisableChannelModelManually(channelID, modelName, "bad streaming response", 7, "operator", 100))
+	t.Cleanup(func() {
+		require.NoError(t, RecoverChannelModelManuallyDisabled(channelID, modelName, 7, "operator", 200))
+	})
+
+	assert.False(t, IsChannelModelRoutable(channelID, group, modelName, 150))
+}

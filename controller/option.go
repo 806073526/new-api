@@ -236,6 +236,24 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "group_ratio_setting.upstream_warning_ratio":
+		err = ratio_setting.CheckUpstreamWarningRatio(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "group_ratio_setting.upstream_warning_auto_disable":
+		err = ratio_setting.CheckUpstreamWarningAutoDisable(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "gemini.safety_settings":
 		err = model_setting.ValidateGeminiSafetySettings(option.Value.(string))
 		if err != nil {

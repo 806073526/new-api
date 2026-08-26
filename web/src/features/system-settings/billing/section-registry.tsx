@@ -43,6 +43,9 @@ const getModelDefaults = (settings: BillingSettings) => ({
 const getGroupDefaults = (settings: BillingSettings) => ({
   TopupGroupRatio: settings.TopupGroupRatio,
   GroupRatio: settings.GroupRatio,
+  UpstreamWarningRatio: settings['group_ratio_setting.upstream_warning_ratio'],
+  UpstreamWarningAutoDisable:
+    settings['group_ratio_setting.upstream_warning_auto_disable'],
   UserUsableGroups: settings.UserUsableGroups,
   GroupGroupRatio: settings.GroupGroupRatio,
   AutoGroups: settings.AutoGroups,

@@ -62,10 +62,10 @@ import {
 } from '../../hooks/use-status-data'
 import { AnnouncementsPanel } from './announcements-panel'
 import { ApiInfoPanel } from './api-info-panel'
+import { ChannelAvailabilityPanel } from './channel-availability-panel'
 import { FAQPanel } from './faq-panel'
 import { PerformanceHealthPanel } from './performance-health-panel'
 import { SummaryCards } from './summary-cards'
-import { UptimePanel } from './uptime-panel'
 
 const SETUP_GUIDE_VISIBILITY_STORAGE_KEY =
   'dashboard_overview_setup_guide_expanded'
@@ -463,7 +463,7 @@ export function OverviewDashboard() {
     apiInfo: showApiInfoPanel,
     announcements: showAnnouncementsPanel,
     faq: showFAQPanel,
-    uptimeKuma: showUptimePanel,
+    channelAvailability: showChannelAvailabilityPanel,
   } = useDashboardContentVisibility()
   const [manualSetupGuideExpanded, setManualSetupGuideExpanded] = useState<
     boolean | null
@@ -609,7 +609,8 @@ export function OverviewDashboard() {
     manualSetupGuideExpanded ?? (setupStatusReady && !setupComplete)
   const showLeftContentPanels =
     isAdmin || showApiInfoPanel || showAnnouncementsPanel || showFAQPanel
-  const showContentPanels = showLeftContentPanels || showUptimePanel
+  const showContentPanels =
+    showLeftContentPanels || showChannelAvailabilityPanel
 
   const handleSetupGuideToggle = () => {
     const nextExpanded = !setupGuideExpanded
@@ -752,14 +753,7 @@ export function OverviewDashboard() {
       <SummaryCards />
 
       {showContentPanels && (
-        <CardStaggerContainer
-          className={cn(
-            'grid grid-cols-1 gap-4',
-            showLeftContentPanels &&
-              showUptimePanel &&
-              'xl:grid-cols-[minmax(0,1fr)_22rem]'
-          )}
-        >
+        <CardStaggerContainer className='grid grid-cols-1 gap-4'>
           {showLeftContentPanels && (
             <div
               className={cn(
@@ -790,9 +784,9 @@ export function OverviewDashboard() {
               )}
             </div>
           )}
-          {showUptimePanel && (
-            <CardStaggerItem>
-              <UptimePanel />
+          {showChannelAvailabilityPanel && (
+            <CardStaggerItem className='w-full min-w-0'>
+              <ChannelAvailabilityPanel isAdmin={isAdmin} />
             </CardStaggerItem>
           )}
         </CardStaggerContainer>

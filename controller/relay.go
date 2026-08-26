@@ -278,15 +278,34 @@ func channelModelHealthGroup(c *gin.Context, info *relaycommon.RelayInfo) string
 	return group
 }
 
+func channelModelObservationLatencyMs(info *relaycommon.RelayInfo) int64 {
+	if info == nil || info.StartTime.IsZero() {
+		return 0
+	}
+	if info.FirstResponseTime.After(info.StartTime) {
+		latency := info.FirstResponseTime.Sub(info.StartTime).Milliseconds()
+		if latency > 0 {
+			return latency
+		}
+	}
+	latency := time.Since(info.StartTime).Milliseconds()
+	if latency < 0 {
+		return 0
+	}
+	return latency
+}
+
 func observeChannelModelSuccess(c *gin.Context, info *relaycommon.RelayInfo, channel *model.Channel) {
 	if channel == nil || info == nil || info.IsChannelTest {
 		return
 	}
-	model.ObserveChannelModelSuccess(
+	model.ObserveChannelModelSuccessWithMetadata(
 		channel.Id,
 		channelModelHealthGroup(c, info),
 		info.OriginModelName,
 		common.GetTimestamp(),
+		channelModelObservationLatencyMs(info),
+		model.ChannelAvailabilitySourceRequest,
 	)
 }
 
@@ -306,13 +325,15 @@ func observeChannelModelFailure(c *gin.Context, info *relaycommon.RelayInfo, cha
 	} else {
 		c.Set("channel_model_health_failures", map[string]struct{}{key: {}})
 	}
-	model.ObserveChannelModelFailure(
+	model.ObserveChannelModelFailureWithMetadata(
 		channel.Id,
 		channelModelHealthGroup(c, info),
 		info.OriginModelName,
 		err,
 		common.GetTimestamp(),
 		model.GetChannelModelHealthConfig(),
+		channelModelObservationLatencyMs(info),
+		model.ChannelAvailabilitySourceRequest,
 	)
 }
 
