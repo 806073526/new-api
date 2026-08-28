@@ -1,0 +1,139 @@
+[SYS] 2026/08/12 - 20:21:57 | initializing token encoders 
+[SYS] 2026/08/12 - 20:21:57 | token encoders initialized 
+[SYS] 2026/08/12 - 20:21:57 | SQL_DSN not set, using SQLite as database 
+[SYS] 2026/08/12 - 20:21:57 | database migration started 
+[SYS] 2026/08/12 - 20:21:57 | system is not initialized and no root user exists 
+[SYS] 2026/08/12 - 20:21:57 | REDIS_CONN_STRING not set, Redis is not enabled 
+[SYS] 2026/08/12 - 20:21:57 | i18n initialized with languages: zh-CN, zh-TW, en 
+[SYS] 2026/08/12 - 20:21:57 | Loaded 0 custom OAuth providers 
+[SYS] 2026/08/12 - 20:21:57 | New API v0.0.0 started 
+[SYS] 2026/08/12 - 20:21:57 | 正在更新数据看板数据... 
+[INFO] 2026/08/12 - 20:21:57 | SYSTEM | codex credential auto-refresh task started: tick=10m0s threshold=24h0m0s 
+[INFO] 2026/08/12 - 20:21:57 | SYSTEM | subscription quota reset task started: tick=1m0s 
+[INFO] 2026/08/12 - 20:21:57 | SYSTEM | system task runner started: runner=PC-20260521RLZQ-BPdJPy7q idle_interval=15s 
+[SYS] 2026/08/12 - 20:21:57 | 保存数据看板数据成功，共保存0条数据 
+
+  [33mWarning: Refresh cookie is not secure and refresh/logout Origin validation is disabled. Please set SESSION_COOKIE_SECURE=true in production.[0m
+
+
+  [32mNew API v0.0.0[0m  ready in 417 ms
+
+  ➜  [1mLocal:[0m   http://localhost:3000/
+  ➜  [1mNetwork:[0m http://172.19.0.0:3000/
+  ➜  [1mNetwork:[0m http://192.168.1.19:3000/
+  ➜  [1mNetwork:[0m http://192.168.1.10:3000/
+  ➜  [1mNetwork:[0m http://172.23.160.1:3000/
+  ➜  [1mNetwork:[0m http://172.31.0.1:3000/
+
+[GIN] 2026/08/12 - 20:22:16 | web | 202608121222164215525008268d9d6iZh1i2Lw | 200 |            0s |       127.0.0.1 |     GET /
+[SYS] 2026/08/12 - 20:22:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:23:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:24:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:25:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:26:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 20:26:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 20:26:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:27:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:28:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:29:57 | syncing options from database 
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230515724242008268d9d6qFHStzWb | 200 |            0s |             ::1 |     GET /
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230516070702008268d9d69ycksZ5u | 200 |     22.0388ms |             ::1 |     GET /static/css/88.10e003a7e2.css
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230516070702008268d9d65YjMLnq2 | 200 |     26.9652ms |             ::1 |     GET /static/js/vendor-tanstack.c89ee708a7.js
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230516060101008268d9d6TT8AfxFl | 200 |     29.6396ms |             ::1 |     GET /static/css/index.faf3a6aa61.css
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230516070702008268d9d6T092n06K | 200 |     29.6465ms |             ::1 |     GET /static/js/vendor-ui-primitives.d0d9bb66ae.js
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230516345656008268d9d6757INzD7 | 200 |      4.7113ms |             ::1 |     GET /static/js/lib-react.d8042649ae.js
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230516345656008268d9d65aPzVOr9 | 200 |     19.5995ms |             ::1 |     GET /static/js/88.7972bd63fd.js
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230516334680008268d9d6agiu9Hdg | 200 |     72.8812ms |             ::1 |     GET /static/js/index.53e8045fcf.js
+[GIN] 2026/08/12 - 20:30:51 | api | 202608121230517750446008268d9d6DHtxHEqs | 200 |            0s |             ::1 |     GET /api/status
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230518174621008268d9d68xXTudPL | 200 |            0s |             ::1 |     GET /favicon.ico
+[GIN] 2026/08/12 - 20:30:51 | api | 202608121230518249220008268d9d6wI97lw8e | 401 |      1.1014ms |             ::1 |    POST /api/user/auth/refresh
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230518285686008268d9d60fnmU3PJ | 200 |            0s |             ::1 |     GET /static/js/async/7711.0e129155e1.js
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230518285686008268d9d6QvxBQ4Fd | 200 |       700.1µs |             ::1 |     GET /static/js/async/9721.2ce3afa4b2.js
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230518285686008268d9d6SYiwckrq | 200 |       700.1µs |             ::1 |     GET /static/js/async/4799.99e3634a5b.js
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230518285686008268d9d6WRQVUEfp | 200 |      2.3032ms |             ::1 |     GET /static/js/async/958.1f8e6dcc75.js
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230518285686008268d9d6R7WeZflg | 200 |      3.3532ms |             ::1 |     GET /static/js/async/2886.8251081141.js
+[GIN] 2026/08/12 - 20:30:51 | api | 202608121230518788603008268d9d6aluySEW2 | 200 |            0s |             ::1 |     GET /api/status
+[GIN] 2026/08/12 - 20:30:51 | api | 202608121230518836654008268d9d6WQCIFuaR | 200 |            0s |             ::1 |     GET /api/status
+[GIN] 2026/08/12 - 20:30:51 | api | 202608121230518836654008268d9d6xfkuk0I7 | 200 |            0s |             ::1 |     GET /api/notice
+[GIN] 2026/08/12 - 20:30:51 | api | 202608121230518836654008268d9d6Tc0TcxeH | 200 |       504.8µs |             ::1 |     GET /api/home_page_content
+[GIN] 2026/08/12 - 20:30:51 | web | 202608121230519030401008268d9d6mSWY6sbn | 200 |            0s |             ::1 |     GET /logo.png
+[GIN] 2026/08/12 - 20:30:54 | web | 202608121230540090059008268d9d66zQrld7k | 200 |            0s |             ::1 |     GET /static/js/async/9884.192c970a37.js
+[GIN] 2026/08/12 - 20:30:54 | web | 202608121230540090059008268d9d6Z7TffSpg | 200 |            0s |             ::1 |     GET /static/js/async/2552.6627e589ff.js
+[GIN] 2026/08/12 - 20:30:54 | web | 202608121230540090059008268d9d62zgDXx56 | 200 |            0s |             ::1 |     GET /static/js/async/1226.2e2827158c.js
+[GIN] 2026/08/12 - 20:30:55 | api | 202608121230552390763008268d9d6OmrrBLk8 | 200 |            0s |             ::1 |    POST /api/user/login?turnstile=
+[SYS] 2026/08/12 - 20:30:57 | syncing options from database 
+[GIN] 2026/08/12 - 20:31:08 | api | 202608121231085510909008268d9d6TDlafIGx | 200 |            0s |             ::1 |    POST /api/user/login?turnstile=
+[GIN] 2026/08/12 - 20:31:17 | api | 202608121231174022222008268d9d6JHhMx6Uy | 200 |            0s |             ::1 |    POST /api/user/login?turnstile=
+[GIN] 2026/08/12 - 20:31:31 | api | 202608121231316131943008268d9d6fnJKyN6E | 200 |            0s |             ::1 |    POST /api/user/login?turnstile=
+[GIN] 2026/08/12 - 20:31:43 | api | 202608121231430579782008268d9d6oi2qX5Zq | 200 |            0s |             ::1 |    POST /api/user/login?turnstile=
+[GIN] 2026/08/12 - 20:31:43 | api | 202608121231437077021008268d9d6ASwMFQXi | 200 |            0s |             ::1 |    POST /api/user/login?turnstile=
+[GIN] 2026/08/12 - 20:31:47 | api | 202608121231479499205008268d9d6VW9Vm9G0 | 200 |       514.1µs |             ::1 |    POST /api/user/login?turnstile=
+[GIN] 2026/08/12 - 20:31:56 | api | 202608121231569172656008268d9d6jw9JvqBZ | 200 |            0s |             ::1 |    POST /api/user/login?turnstile=
+[SYS] 2026/08/12 - 20:31:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 20:31:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 20:31:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:32:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:33:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:34:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:35:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:36:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 20:36:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 20:36:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:37:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:38:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:39:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:40:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:41:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 20:41:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 20:41:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:42:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:43:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:44:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:45:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:46:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 20:46:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 20:46:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:47:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:48:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:49:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:50:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:51:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 20:51:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 20:51:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:52:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:53:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:54:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:55:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:56:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 20:56:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 20:56:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:57:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:58:57 | syncing options from database 
+[SYS] 2026/08/12 - 20:59:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:00:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:01:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 21:01:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 21:01:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:02:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:03:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:04:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:05:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:06:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 21:06:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 21:06:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:07:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:08:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:09:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:10:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:11:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 21:11:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 21:11:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:12:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:13:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:14:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:15:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:16:57 | 正在更新数据看板数据... 
+[SYS] 2026/08/12 - 21:16:57 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/12 - 21:16:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:17:57 | syncing options from database 
+[SYS] 2026/08/12 - 21:18:57 | syncing options from database 

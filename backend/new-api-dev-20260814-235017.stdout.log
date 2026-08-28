@@ -1,0 +1,56 @@
+[SYS] 2026/08/14 - 23:50:25 | initializing token encoders 
+[SYS] 2026/08/14 - 23:50:25 | token encoders initialized 
+[SYS] 2026/08/14 - 23:50:25 | SQL_DSN not set, using SQLite as database 
+[SYS] 2026/08/14 - 23:50:25 | database migration started 
+[SYS] 2026/08/14 - 23:50:26 | system is not initialized and no root user exists 
+[SYS] 2026/08/14 - 23:50:26 | REDIS_CONN_STRING not set, Redis is not enabled 
+[SYS] 2026/08/14 - 23:50:26 | i18n initialized with languages: zh-CN, zh-TW, en 
+[SYS] 2026/08/14 - 23:50:26 | Loaded 0 custom OAuth providers 
+[SYS] 2026/08/14 - 23:50:26 | New API v0.0.0 started 
+[SYS] 2026/08/14 - 23:50:26 | 正在更新数据看板数据... 
+[INFO] 2026/08/14 - 23:50:26 | SYSTEM | codex credential auto-refresh task started: tick=10m0s threshold=24h0m0s 
+[INFO] 2026/08/14 - 23:50:26 | SYSTEM | subscription quota reset task started: tick=1m0s 
+[INFO] 2026/08/14 - 23:50:26 | SYSTEM | system task runner started: runner=PC-20260521RLZQ-u0GugTh3 idle_interval=15s 
+[SYS] 2026/08/14 - 23:50:26 | 保存数据看板数据成功，共保存0条数据 
+
+  [33mWarning: Refresh cookie is not secure and refresh/logout Origin validation is disabled. Please set SESSION_COOKIE_SECURE=true in production.[0m
+
+
+  [32mNew API v0.0.0[0m  ready in 294 ms
+
+  ➜  [1mLocal:[0m   http://localhost:3000/
+  ➜  [1mNetwork:[0m http://192.168.1.19:3000/
+  ➜  [1mNetwork:[0m http://192.168.1.10:3000/
+  ➜  [1mNetwork:[0m http://172.23.160.1:3000/
+  ➜  [1mNetwork:[0m http://172.31.0.1:3000/
+
+[SYS] 2026/08/14 - 23:51:26 | syncing options from database 
+[GIN] 2026/08/14 - 23:51:54 | web | 20260814155154376812600FsMk97pk25EShDP0 | 200 |      3.1407ms |             ::1 |     GET /
+[SYS] 2026/08/14 - 23:52:26 | syncing options from database 
+[SYS] 2026/08/14 - 23:53:26 | syncing options from database 
+[SYS] 2026/08/14 - 23:54:26 | syncing options from database 
+[SYS] 2026/08/14 - 23:55:26 | 正在更新数据看板数据... 
+[SYS] 2026/08/14 - 23:55:26 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/14 - 23:55:26 | syncing options from database 
+[GIN] 2026/08/14 - 23:55:42 | web | 20260814155542978790400FsMk97pkU95YASGR | 200 |       527.7µs |             ::1 |     GET /
+[GIN] 2026/08/14 - 23:55:43 | web | 20260814155542983342200FsMk97pkqjsAc3mC | 200 |     64.3488ms |             ::1 |     GET /static/css/index.e37ba05bcd.css
+[GIN] 2026/08/14 - 23:55:43 | web | 20260814155543005790100FsMk97pktWPACh7g | 200 |    134.0307ms |             ::1 |     GET /static/js/index.e906988a5a.js
+[GIN] 2026/08/14 - 23:55:43 | api | 20260814155543192345000FsMk97pkIyX52sqc | 200 |       503.9µs |             ::1 |     GET /api/status
+[GIN] 2026/08/14 - 23:55:43 | api | 20260814155543232331000FsMk97pkckfD8JqB | 401 |      1.0296ms |             ::1 |    POST /api/user/auth/refresh
+[GIN] 2026/08/14 - 23:55:43 | api | 20260814155543271658400FsMk97pkWxzhvibH | 200 |            0s |             ::1 |     GET /api/status
+[GIN] 2026/08/14 - 23:55:43 | api | 20260814155543275524400FsMk97pkaasAjnM2 | 200 |            0s |             ::1 |     GET /api/status
+[GIN] 2026/08/14 - 23:55:43 | api | 20260814155543275524400FsMk97pkwXBI61E3 | 200 |      1.0596ms |             ::1 |     GET /api/notice
+[GIN] 2026/08/14 - 23:55:43 | api | 20260814155543277157500FsMk97pkqpHGV5T8 | 200 |         646µs |             ::1 |     GET /api/home_page_content
+[GIN] 2026/08/14 - 23:55:48 | api | 20260814155548411755000FsMk97pkKlGHHBFM | 200 |      1.5505ms |             ::1 |    POST /api/user/login?turnstile=
+[GIN] 2026/08/14 - 23:55:50 | api | 20260814155550958083900FsMk97pkcA5b0Udx | 200 |       523.6µs |             ::1 |    POST /api/user/login?turnstile=
+[GIN] 2026/08/14 - 23:55:58 | api | 20260814155558160589300FsMk97pkWpMf2pNP | 200 |            0s |             ::1 |    POST /api/user/login?turnstile=
+[SYS] 2026/08/14 - 23:56:26 | syncing options from database 
+[SYS] 2026/08/14 - 23:57:26 | syncing options from database 
+[SYS] 2026/08/14 - 23:58:26 | syncing options from database 
+[SYS] 2026/08/14 - 23:59:26 | syncing options from database 
+[SYS] 2026/08/15 - 00:00:26 | 正在更新数据看板数据... 
+[SYS] 2026/08/15 - 00:00:26 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/08/15 - 00:00:26 | syncing options from database 
+[SYS] 2026/08/15 - 00:01:26 | syncing options from database 
+[SYS] 2026/08/15 - 00:02:26 | syncing options from database 
+[SYS] 2026/08/15 - 00:03:26 | syncing options from database 

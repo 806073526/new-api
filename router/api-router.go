@@ -241,6 +241,8 @@ func SetApiRouter(router *gin.Engine) {
 			upstreamHubRoute.GET("/identities", controller.GetUpstreamHubIdentities)
 			upstreamHubRoute.POST("/metrics", controller.IngestUpstreamHubMetrics)
 			upstreamHubRoute.POST("/priority/apply", controller.ApplyUpstreamHubPriorities)
+			upstreamHubRoute.POST("/billing/aggregate", controller.GetUpstreamHubBillingAggregate)
+			upstreamHubRoute.POST("/billing/details", controller.GetUpstreamHubBillingDetails)
 		}
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)

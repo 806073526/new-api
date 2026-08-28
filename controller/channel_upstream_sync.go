@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -12,10 +13,17 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+)
+
+const (
+	upstreamHubBillingBucketSeconds   = 300
+	upstreamHubBillingMaxRangeSeconds = 7 * 24 * 60 * 60
 )
 
 type upstreamHubIdentity struct {
 	ChannelID      int    `json:"channel_id"`
+	ChannelName    string `json:"channel_name"`
 	BaseURL        string `json:"base_url"`
 	KeyFingerprint string `json:"key_fingerprint"`
 	Priority       int64  `json:"priority"`
@@ -45,6 +53,93 @@ type upstreamHubPriorityInput struct {
 
 type upstreamHubPriorityRequest struct {
 	Items []upstreamHubPriorityInput `json:"items"`
+}
+
+type upstreamHubBillingAggregateRequest struct {
+	StartAt       int64 `json:"start_at" binding:"required"`
+	EndAt         int64 `json:"end_at" binding:"required"`
+	BucketSeconds int   `json:"bucket_seconds" binding:"required"`
+}
+
+type upstreamHubBillingDetailsRequest struct {
+	StartAt  int64 `json:"start_at" binding:"required"`
+	EndAt    int64 `json:"end_at" binding:"required"`
+	Page     int   `json:"page"`
+	PageSize int   `json:"page_size"`
+}
+
+func GetUpstreamHubBillingAggregate(c *gin.Context) {
+	var request upstreamHubBillingAggregateRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid billing aggregation request"})
+		return
+	}
+	if request.StartAt <= 0 || request.EndAt <= request.StartAt || request.EndAt-request.StartAt > upstreamHubBillingMaxRangeSeconds {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid billing aggregation range"})
+		return
+	}
+	if request.BucketSeconds != upstreamHubBillingBucketSeconds {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "unsupported billing bucket_seconds"})
+		return
+	}
+
+	items, err := model.GetUpstreamHubBillingBuckets(c.Request.Context(), request.StartAt, request.EndAt, request.BucketSeconds)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if common.QuotaPerUnit <= 0 {
+		common.ApiError(c, errors.New("invalid quota_per_unit"))
+		return
+	}
+	channelNames := upstreamHubChannelNames()
+	for i := range items {
+		items[i].ChannelName = channelNames[items[i].ChannelID]
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"source":         "new-api",
+		"start_at":       request.StartAt,
+		"end_at":         request.EndAt,
+		"bucket_seconds": request.BucketSeconds,
+		"quota_per_unit": common.QuotaPerUnit,
+		"complete":       true,
+		"items":          items,
+	}})
+}
+
+func GetUpstreamHubBillingDetails(c *gin.Context) {
+	var request upstreamHubBillingDetailsRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid billing detail request"})
+		return
+	}
+	if request.StartAt <= 0 || request.EndAt <= request.StartAt || request.EndAt-request.StartAt > upstreamHubBillingMaxRangeSeconds {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid billing detail range"})
+		return
+	}
+	if request.Page < 1 {
+		request.Page = 1
+	}
+	if request.PageSize <= 0 {
+		request.PageSize = 500
+	}
+	if request.PageSize > 500 {
+		request.PageSize = 500
+	}
+	items, total, hasMore, err := model.GetUpstreamHubBillingEvents(c.Request.Context(), request.StartAt, request.EndAt, request.Page, request.PageSize)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	channelNames := upstreamHubChannelNames()
+	for i := range items {
+		items[i].ChannelName = channelNames[items[i].ChannelID]
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"source": "new-api", "start_at": request.StartAt, "end_at": request.EndAt,
+		"page": request.Page, "page_size": request.PageSize, "total": total,
+		"has_more": hasMore, "complete": true, "items": items,
+	}})
 }
 
 func buildUpstreamPriorityPlan(metrics []model.ChannelUpstreamMetric, selected []int, base, step int64) []upstreamHubPriorityInput {
@@ -137,7 +232,9 @@ func InitializeUpstreamHubPriorities(c *gin.Context) {
 
 func GetUpstreamHubIdentities(c *gin.Context) {
 	var channels []*model.Channel
-	if err := model.DB.Find(&channels).Error; err != nil {
+	// Disabled channels remain valid historical identities. Do not filter by
+	// status here: disabling routing must not discard the channel's mapping.
+	if err := model.DB.Order("id ASC").Find(&channels).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -153,12 +250,41 @@ func GetUpstreamHubIdentities(c *gin.Context) {
 				continue
 			}
 			identities = append(identities, upstreamHubIdentity{
-				ChannelID: channel.Id, BaseURL: channel.GetBaseURL(),
+				ChannelID: channel.Id, ChannelName: channel.Name, BaseURL: channel.GetBaseURL(),
 				KeyFingerprint: fingerprint, Priority: priority,
 			})
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": identities})
+}
+
+func upstreamHubChannelNames() map[int]string {
+	names := make(map[int]string)
+	load := func(db *gorm.DB, target map[int]string) bool {
+		if db == nil {
+			return false
+		}
+		var channels []model.Channel
+		if err := db.Select("id", "name").Find(&channels).Error; err != nil {
+			return false
+		}
+		for _, channel := range channels {
+			target[channel.Id] = channel.Name
+		}
+		return true
+	}
+	load(model.DB, names)
+	if model.LOG_DB != nil && model.LOG_DB != model.DB {
+		fallback := make(map[int]string)
+		if load(model.LOG_DB, fallback) {
+			for id, name := range fallback {
+				if strings.TrimSpace(names[id]) == "" {
+					names[id] = name
+				}
+			}
+		}
+	}
+	return names
 }
 
 func IngestUpstreamHubMetrics(c *gin.Context) {

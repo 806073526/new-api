@@ -1,0 +1,3 @@
+2026/08/15 00:11:24 WARNING: TRUSTED_PROXIES is unset or blank; trusting loopback, RFC 1918, and IPv6 ULA proxy addresses for compatibility. Set TRUSTED_PROXIES=none to trust no proxies, or configure explicit proxy IPs/CIDRs to replace these defaults.
+[DEBUG] 2026/08/15 - 00:11:24 | SYSTEM | codex credential auto-refresh: scanned=0 refreshed=0 
+exit status 0xffffffff

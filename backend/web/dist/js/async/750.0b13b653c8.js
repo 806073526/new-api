@@ -1,0 +1,1 @@
+"use strict";(self.rspackChunknewapi_web=self.rspackChunknewapi_web||[]).push([[750],{64333(e,n,s){s.r(n),s.d(n,{component:()=>t});var r=s(73390),p=s(67922);let t=function(){return(0,r.jsx)(p.s,{})}}}]);
