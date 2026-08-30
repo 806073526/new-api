@@ -1,10 +1,16 @@
 package model
 
 import (
+	"context"
+	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestAggregateUpstreamHubBillingLogsSplitsRatiosAndSeparatesRefunds(t *testing.T) {
@@ -98,4 +104,39 @@ func TestAggregateUpstreamHubBillingLogsMarksZeroGroupRatioAsUnavailable(t *test
 	assert.Equal(t, "group_ratio", items[0].RatioSource)
 	assert.Equal(t, "unavailable", items[0].NormalizationStatus)
 	assert.Equal(t, int64(500000), items[0].ConsumeQuota)
+}
+
+func TestGetUpstreamHubPersonalUsageBucketsAggregatesAllRootUsers(t *testing.T) {
+	previousDB, previousLogDB := DB, LOG_DB
+	t.Cleanup(func() { DB, LOG_DB = previousDB, previousLogDB })
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	DB, LOG_DB = db, db
+	t.Cleanup(func() {
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	require.NoError(t, db.AutoMigrate(&User{}, &Log{}))
+	require.NoError(t, db.Create(&User{Id: 1, Username: "root-a", Password: "password", Role: common.RoleRootUser, AffCode: "root-a"}).Error)
+	require.NoError(t, db.Create(&User{Id: 2, Username: "root-b", Password: "password", Role: common.RoleRootUser, AffCode: "root-b"}).Error)
+	require.NoError(t, db.Create(&User{Id: 3, Username: "normal", Password: "password", Role: common.RoleCommonUser, AffCode: "normal"}).Error)
+	for _, item := range []Log{
+		{CreatedAt: 1704067212, Type: LogTypeConsume, Quota: 100, UserId: 1},
+		{CreatedAt: 1704067220, Type: LogTypeConsume, Quota: 200, UserId: 2},
+		{CreatedAt: 1704067230, Type: LogTypeRefund, Quota: 50, UserId: 1},
+		{CreatedAt: 1704067240, Type: LogTypeConsume, Quota: 999, UserId: 3},
+	} {
+		require.NoError(t, db.Create(&item).Error)
+	}
+
+	items, complete, err := GetUpstreamHubPersonalUsageBuckets(context.Background(), 1704067200, 1704067500, 300)
+	require.NoError(t, err)
+	assert.True(t, complete)
+	require.Len(t, items, 1)
+	assert.Equal(t, int64(300), items[0].ConsumeQuota)
+	assert.Equal(t, int64(50), items[0].RefundQuota)
+	assert.Equal(t, int64(250), items[0].NetQuota)
 }

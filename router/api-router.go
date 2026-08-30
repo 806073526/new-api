@@ -238,6 +238,7 @@ func SetApiRouter(router *gin.Engine) {
 		upstreamHubRoute := apiRouter.Group("/internal/upstream-hub")
 		upstreamHubRoute.Use(middleware.UpstreamHubAuth())
 		{
+			upstreamHubRoute.GET("/setup", controller.GetUpstreamHubSetup)
 			upstreamHubRoute.GET("/identities", controller.GetUpstreamHubIdentities)
 			upstreamHubRoute.POST("/metrics", controller.IngestUpstreamHubMetrics)
 			upstreamHubRoute.POST("/priority/apply", controller.ApplyUpstreamHubPriorities)

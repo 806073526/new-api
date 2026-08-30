@@ -68,6 +68,19 @@ type upstreamHubBillingDetailsRequest struct {
 	PageSize int   `json:"page_size"`
 }
 
+// GetUpstreamHubSetup exposes the installation timestamp needed by
+// upstream-hub to backfill its first billing window.
+func GetUpstreamHubSetup(c *gin.Context) {
+	setup := model.GetSetup()
+	if setup == nil || setup.InitializedAt <= 0 {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "new-api setup is not initialized"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"initialized_at": setup.InitializedAt,
+	}})
+}
+
 func GetUpstreamHubBillingAggregate(c *gin.Context) {
 	var request upstreamHubBillingAggregateRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -96,14 +109,23 @@ func GetUpstreamHubBillingAggregate(c *gin.Context) {
 	for i := range items {
 		items[i].ChannelName = channelNames[items[i].ChannelID]
 	}
+	personalItems, personalComplete, personalErr := model.GetUpstreamHubPersonalUsageBuckets(c.Request.Context(), request.StartAt, request.EndAt, request.BucketSeconds)
+	if personalErr != nil {
+		// Personal usage is an optional accounting dimension. Keep the sales
+		// aggregate available while exposing that this dimension is incomplete.
+		personalItems = []model.UpstreamHubPersonalUsageBucket{}
+		personalComplete = false
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-		"source":         "new-api",
-		"start_at":       request.StartAt,
-		"end_at":         request.EndAt,
-		"bucket_seconds": request.BucketSeconds,
-		"quota_per_unit": common.QuotaPerUnit,
-		"complete":       true,
-		"items":          items,
+		"source":                  "new-api",
+		"start_at":                request.StartAt,
+		"end_at":                  request.EndAt,
+		"bucket_seconds":          request.BucketSeconds,
+		"quota_per_unit":          common.QuotaPerUnit,
+		"complete":                true,
+		"items":                   items,
+		"personal_usage_items":    personalItems,
+		"personal_usage_complete": personalComplete,
 	}})
 }
 

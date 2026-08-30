@@ -153,6 +153,110 @@ func TestUpstreamHubBillingDetailsExportsAuditableLogRowsWithPagination(t *testi
 	assert.Equal(t, "req-a", response.Data.Items[0].RequestID)
 }
 
+func TestUpstreamHubBillingAggregateExportsRootPersonalUsage(t *testing.T) {
+	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousMainDatabaseType, previousLogDatabaseType := common.MainDatabaseType(), common.LogDatabaseType()
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = previousDB, previousLogDB
+		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
+	})
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB, model.LOG_DB = db, db
+	t.Cleanup(func() {
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}))
+	require.NoError(t, db.Create(&model.User{Id: 101, Username: "root-a", Password: "password", Role: common.RoleRootUser, AffCode: "root-a"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 102, Username: "root-b", Password: "password", Role: common.RoleRootUser, AffCode: "root-b"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 103, Username: "normal", Password: "password", Role: common.RoleCommonUser, AffCode: "normal"}).Error)
+	for _, item := range []model.Log{
+		{CreatedAt: 1704067212, Type: model.LogTypeConsume, Quota: 100, UserId: 101},
+		{CreatedAt: 1704067220, Type: model.LogTypeConsume, Quota: 200, UserId: 102},
+		{CreatedAt: 1704067230, Type: model.LogTypeRefund, Quota: 50, UserId: 101},
+		{CreatedAt: 1704067240, Type: model.LogTypeConsume, Quota: 999, UserId: 103},
+	} {
+		require.NoError(t, db.Create(&item).Error)
+	}
+
+	t.Setenv("UPSTREAM_HUB_API_TOKEN", "billing-test-token")
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	group := router.Group("/api/internal/upstream-hub")
+	group.Use(middleware.UpstreamHubAuth())
+	group.POST("/billing/aggregate", GetUpstreamHubBillingAggregate)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/internal/upstream-hub/billing/aggregate", strings.NewReader(`{"start_at":1704067200,"end_at":1704067500,"bucket_seconds":300}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer billing-test-token")
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			PersonalUsageComplete bool                                   `json:"personal_usage_complete"`
+			Items                 []model.UpstreamHubPersonalUsageBucket `json:"personal_usage_items"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.True(t, response.Success)
+	assert.True(t, response.Data.PersonalUsageComplete)
+	require.Len(t, response.Data.Items, 1)
+	assert.Equal(t, int64(300), response.Data.Items[0].ConsumeQuota)
+	assert.Equal(t, int64(50), response.Data.Items[0].RefundQuota)
+	assert.Equal(t, int64(250), response.Data.Items[0].NetQuota)
+}
+
+func TestUpstreamHubSetupExportsInitializedAtWithM2MAuth(t *testing.T) {
+	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousMainDatabaseType, previousLogDatabaseType := common.MainDatabaseType(), common.LogDatabaseType()
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = previousDB, previousLogDB
+		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
+	})
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB, model.LOG_DB = db, db
+	t.Cleanup(func() {
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	require.NoError(t, db.AutoMigrate(&model.Setup{}))
+	require.NoError(t, db.Create(&model.Setup{Version: "test", InitializedAt: 1704067200}).Error)
+
+	t.Setenv("UPSTREAM_HUB_API_TOKEN", "billing-test-token")
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	group := router.Group("/api/internal/upstream-hub")
+	group.Use(middleware.UpstreamHubAuth())
+	group.GET("/setup", GetUpstreamHubSetup)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/internal/upstream-hub/setup", nil)
+	request.Header.Set("Authorization", "Bearer billing-test-token")
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			InitializedAt int64 `json:"initialized_at"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.True(t, response.Success)
+	assert.Equal(t, int64(1704067200), response.Data.InitializedAt)
+}
+
 func TestUpstreamHubIdentitiesIncludeDisabledChannels(t *testing.T) {
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	previousMainDatabaseType, previousLogDatabaseType := common.MainDatabaseType(), common.LogDatabaseType()

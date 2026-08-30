@@ -57,6 +57,18 @@ type UpstreamHubBillingEvent struct {
 	UpstreamRequestID   string  `json:"upstream_request_id,omitempty"`
 }
 
+// UpstreamHubPersonalUsageBucket aggregates consumption made by every Root
+// user. Root user IDs are resolved from the User table at query time so no
+// administrator ID needs to be configured in either deployment.
+type UpstreamHubPersonalUsageBucket struct {
+	BucketStart  int64 `json:"bucket_start"`
+	BucketEnd    int64 `json:"bucket_end"`
+	ConsumeQuota int64 `json:"consume_quota"`
+	RefundQuota  int64 `json:"refund_quota"`
+	NetQuota     int64 `json:"net_quota"`
+	EventCount   int64 `json:"event_count"`
+}
+
 type upstreamHubBillingBucketKey struct {
 	bucketStart         int64
 	channelID           int
@@ -93,6 +105,81 @@ func GetUpstreamHubBillingBuckets(ctx context.Context, startAt, endAt int64, buc
 		return nil, err
 	}
 	return AggregateUpstreamHubBillingLogs(logs, startAt, endAt, bucketSeconds)
+}
+
+// GetUpstreamHubPersonalUsageBuckets aggregates consume/refund logs for all
+// Root users. Missing database handles or Root users are reported as an
+// incomplete optional dataset rather than failing the sales aggregate.
+func GetUpstreamHubPersonalUsageBuckets(ctx context.Context, startAt, endAt int64, bucketSeconds int) ([]UpstreamHubPersonalUsageBucket, bool, error) {
+	if startAt < 0 || endAt <= startAt || bucketSeconds <= 0 {
+		return nil, false, errors.New("invalid personal usage aggregation range")
+	}
+	if DB == nil || LOG_DB == nil {
+		return []UpstreamHubPersonalUsageBucket{}, false, nil
+	}
+	var rootIDs []int
+	if err := DB.Model(&User{}).Where("role = ?", common.RoleRootUser).Pluck("id", &rootIDs).Error; err != nil {
+		return nil, false, err
+	}
+	if len(rootIDs) == 0 {
+		return []UpstreamHubPersonalUsageBucket{}, false, nil
+	}
+	var logs []*Log
+	if err := LOG_DB.WithContext(ctx).
+		Model(&Log{}).
+		Select("created_at, type, quota, user_id").
+		Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		Where("created_at >= ? AND created_at < ?", startAt, endAt).
+		Where("user_id IN ?", rootIDs).
+		Find(&logs).Error; err != nil {
+		return nil, false, err
+	}
+	items, err := AggregateUpstreamHubPersonalUsageLogs(logs, startAt, endAt, bucketSeconds)
+	if err != nil {
+		return nil, false, err
+	}
+	return items, true, nil
+}
+
+// AggregateUpstreamHubPersonalUsageLogs turns Root-user logs into idempotent
+// time buckets. The caller is responsible for filtering the logs to Root
+// users; keeping this pure makes the arithmetic easy to test and reuse.
+func AggregateUpstreamHubPersonalUsageLogs(logs []*Log, startAt, endAt int64, bucketSeconds int) ([]UpstreamHubPersonalUsageBucket, error) {
+	if startAt < 0 || endAt <= startAt || bucketSeconds <= 0 {
+		return nil, errors.New("invalid personal usage aggregation range")
+	}
+	byStart := make(map[int64]*UpstreamHubPersonalUsageBucket)
+	for _, log := range logs {
+		if log == nil || log.CreatedAt < startAt || log.CreatedAt >= endAt {
+			continue
+		}
+		if log.Type != LogTypeConsume && log.Type != LogTypeRefund {
+			continue
+		}
+		bucketStart := log.CreatedAt - log.CreatedAt%int64(bucketSeconds)
+		bucket := byStart[bucketStart]
+		if bucket == nil {
+			bucket = &UpstreamHubPersonalUsageBucket{BucketStart: bucketStart, BucketEnd: bucketStart + int64(bucketSeconds)}
+			byStart[bucketStart] = bucket
+		}
+		quota := int64(log.Quota)
+		if quota < 0 {
+			quota = -quota
+		}
+		if log.Type == LogTypeConsume {
+			bucket.ConsumeQuota += quota
+		} else {
+			bucket.RefundQuota += quota
+		}
+		bucket.EventCount++
+	}
+	items := make([]UpstreamHubPersonalUsageBucket, 0, len(byStart))
+	for _, bucket := range byStart {
+		bucket.NetQuota = bucket.ConsumeQuota - bucket.RefundQuota
+		items = append(items, *bucket)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].BucketStart < items[j].BucketStart })
+	return items, nil
 }
 
 func GetUpstreamHubBillingEvents(ctx context.Context, startAt, endAt int64, page, pageSize int) ([]UpstreamHubBillingEvent, int64, bool, error) {
